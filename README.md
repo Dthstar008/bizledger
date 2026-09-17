@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Financial Operating System for Nigerian Informal Businesses
 
 Digital back office for Nigerian microbusinesses: sales, inventory, expenses,
