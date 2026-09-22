@@ -9,6 +9,12 @@ export class SaleItemDto {
   @IsInt()
   @Min(1)
   quantity: number;
+
+  /** Overrides the product's catalog selling price for this line — for negotiated/discounted point-of-sale pricing. Defaults to the product's current sellingPrice when omitted. */
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  unitPrice?: number;
 }
 
 export class CreateSaleDto {

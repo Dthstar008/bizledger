@@ -1,11 +1,11 @@
 import { Tabs } from 'expo-router';
-import { Text } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../../src/theme';
 
-function TabIcon({ symbol, focused }: { symbol: string; focused: boolean }) {
-  return (
-    <Text style={{ fontSize: 20, opacity: focused ? 1 : 0.5 }}>{symbol}</Text>
-  );
+type IoniconName = keyof typeof Ionicons.glyphMap;
+
+function TabIcon({ name, focused }: { name: IoniconName; focused: boolean }) {
+  return <Ionicons name={name} size={22} color={focused ? colors.primary : colors.textMuted} />;
 }
 
 export default function TabsLayout() {
@@ -19,23 +19,38 @@ export default function TabsLayout() {
     >
       <Tabs.Screen
         name="index"
-        options={{ title: 'Dashboard', tabBarIcon: ({ focused }) => <TabIcon symbol="🏠" focused={focused} /> }}
+        options={{
+          title: 'Dashboard',
+          tabBarIcon: ({ focused }) => <TabIcon name={focused ? 'home' : 'home-outline'} focused={focused} />,
+        }}
       />
       <Tabs.Screen
         name="sales"
-        options={{ title: 'Sales', tabBarIcon: ({ focused }) => <TabIcon symbol="🧾" focused={focused} /> }}
+        options={{
+          title: 'Sales',
+          tabBarIcon: ({ focused }) => <TabIcon name={focused ? 'receipt' : 'receipt-outline'} focused={focused} />,
+        }}
       />
       <Tabs.Screen
         name="inventory"
-        options={{ title: 'Inventory', tabBarIcon: ({ focused }) => <TabIcon symbol="📦" focused={focused} /> }}
+        options={{
+          title: 'Inventory',
+          tabBarIcon: ({ focused }) => <TabIcon name={focused ? 'cube' : 'cube-outline'} focused={focused} />,
+        }}
       />
       <Tabs.Screen
         name="customers"
-        options={{ title: 'Customers', tabBarIcon: ({ focused }) => <TabIcon symbol="👥" focused={focused} /> }}
+        options={{
+          title: 'Customers',
+          tabBarIcon: ({ focused }) => <TabIcon name={focused ? 'people' : 'people-outline'} focused={focused} />,
+        }}
       />
       <Tabs.Screen
         name="expenses"
-        options={{ title: 'Expenses', tabBarIcon: ({ focused }) => <TabIcon symbol="💸" focused={focused} /> }}
+        options={{
+          title: 'Expenses',
+          tabBarIcon: ({ focused }) => <TabIcon name={focused ? 'cash' : 'cash-outline'} focused={focused} />,
+        }}
       />
     </Tabs>
   );

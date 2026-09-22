@@ -37,6 +37,10 @@ export class AuthService {
           passwordHash,
           name: dto.ownerName,
           businessId: business.id,
+          // DTO validation already requires this to be exactly `true`, so
+          // this timestamp is an honest record of when that confirmation
+          // actually happened, not just a UI gate.
+          ageConfirmedAt: new Date(),
         }),
       );
       return { business, user };

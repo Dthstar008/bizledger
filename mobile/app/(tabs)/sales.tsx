@@ -1,6 +1,6 @@
 import { useCallback, useState } from 'react';
 import { Alert, StyleSheet, Text, View } from 'react-native';
-import { router, useFocusEffect } from 'expo-router';
+import { router } from 'expo-router';
 import { ScreenContainer } from '../../src/components/ScreenContainer';
 import { Button } from '../../src/components/Button';
 import { listSales } from '../../src/api/sales';
@@ -9,6 +9,7 @@ import { Sale } from '../../src/api/types';
 import { formatNaira } from '../../src/utils/currency';
 import { colors, radius, spacing } from '../../src/theme';
 import { PaymentStatus } from '../../src/api/types';
+import { useFocusLoad } from '../../src/hooks/useFocusLoad';
 
 const PAYMENT_STATUS_LABEL: Record<PaymentStatus, string> = {
   paid: 'Paid',
@@ -32,11 +33,7 @@ export default function SalesScreen() {
     }
   }, []);
 
-  useFocusEffect(
-    useCallback(() => {
-      load();
-    }, [load]),
-  );
+  useFocusLoad(load);
 
   return (
     <ScreenContainer refreshing={loading} onRefresh={load}>

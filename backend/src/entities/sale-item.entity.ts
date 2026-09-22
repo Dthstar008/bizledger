@@ -1,4 +1,4 @@
-import { Column, Entity, JoinColumn, ManyToOne, PrimaryGeneratedColumn } from 'typeorm';
+import { Column, Entity, Index, JoinColumn, ManyToOne, PrimaryGeneratedColumn } from 'typeorm';
 import { Sale } from './sale.entity';
 import { Product } from './product.entity';
 import { DecimalTransformer } from '../common/decimal.transformer';
@@ -13,6 +13,7 @@ export class SaleItem {
   sale: Sale;
 
   @Column()
+  @Index()
   saleId: string;
 
   @ManyToOne(() => Product, { onDelete: 'RESTRICT' })
@@ -20,6 +21,7 @@ export class SaleItem {
   product: Product;
 
   @Column()
+  @Index()
   productId: string;
 
   @Column()

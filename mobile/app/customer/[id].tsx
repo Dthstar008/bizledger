@@ -1,6 +1,6 @@
 import { useCallback, useState } from 'react';
 import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
-import { useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams } from 'expo-router';
 import { ScreenContainer } from '../../src/components/ScreenContainer';
 import { Button } from '../../src/components/Button';
 import { TextField } from '../../src/components/TextField';
@@ -9,6 +9,7 @@ import { apiErrorMessage } from '../../src/api/client';
 import { CustomerDetail, TransactionChannel } from '../../src/api/types';
 import { formatNaira } from '../../src/utils/currency';
 import { colors, radius, spacing } from '../../src/theme';
+import { useFocusLoad } from '../../src/hooks/useFocusLoad';
 
 const REPAYMENT_CHANNELS: { value: TransactionChannel; label: string }[] = [
   { value: 'cash', label: 'Cash' },
@@ -39,11 +40,7 @@ export default function CustomerDetailScreen() {
     }
   }, [id]);
 
-  useFocusEffect(
-    useCallback(() => {
-      load();
-    }, [load]),
-  );
+  useFocusLoad(load);
 
   async function handleRepayment() {
     if (!id) return;

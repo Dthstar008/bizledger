@@ -6,7 +6,7 @@ export function listSales() {
 }
 
 export function createSale(payload: {
-  items: { productId: string; quantity: number }[];
+  items: { productId: string; quantity: number; unitPrice?: number }[];
   paymentMethod: PaymentMethod;
   customerId?: string;
   amountPaid?: number;

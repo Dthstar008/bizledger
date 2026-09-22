@@ -31,6 +31,7 @@ async function seed() {
       phone: '08012345678',
       email,
       password: 'password123',
+      confirmedAdult: true,
     });
   } catch {
     auth = await authService.login({ email, password: 'password123' });

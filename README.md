@@ -22,14 +22,6 @@ Stage 1 of the roadmap (Merchant MVP):
       → seed → login → sale → dashboard math all checked out)
 - [ ] Suppliers, offline mode, receipts (Stage 2)
 
-## Structure
-
-```
-backend/    NestJS + TypeORM + PostgreSQL API
-mobile/     React Native (Expo Router) app
-docker-compose.yml   Local Postgres for development
-```
-
 ## Running the backend
 
 This project currently runs against **Supabase** (hosted Postgres). Supabase
@@ -97,7 +89,7 @@ A sale looks like:
 ```json
 POST /sales
 {
-  "items": [{ "productId": "...", "quantity": 2 }],
+  "items": [{ "productId": "...", "quantity": 2, "unitPrice": 7000 }],
   "paymentMethod": "credit",
   "customerId": "...",
   "amountPaid": 5000,
@@ -108,6 +100,14 @@ POST /sales
 It atomically deducts stock, computes the credit balance (`total - amountPaid`),
 and writes `SALE_CREATED`, `INVENTORY_DECREASED`, `PAYMENT_RECEIVED` and/or
 `CUSTOMER_CREDIT_CREATED` events to the ledger in one transaction.
+
+`items[].unitPrice` is optional — omit it to sell at the product's current
+catalog `sellingPrice`, or set it to negotiate a price at the point of sale
+(haggling, bulk discount, clearance). The line's cost basis always stays the
+product's real `costPrice` regardless of what it sold for, so gross-profit
+reporting reflects what the sale actually earned, not the catalog margin.
+The mobile New Sale screen lets the merchant tap a cart line's price to
+override it, showing the catalog price alongside when they differ.
 
 ### Sale status vs. payment status
 
@@ -226,3 +226,33 @@ in the blueprint.
 - **Multi-tenancy** is per-business, enforced by scoping every query to the
   `businessId` on the authenticated user's JWT — there's no shared data
   between merchants.
+
+## Performance
+
+- **Responses are gzip-compressed** (`compression` middleware in `main.ts`)
+  above a ~1KB threshold — small payloads like `/health` stay uncompressed
+  since the CPU cost isn't worth it below that size.
+- **Sale creation is a fixed number of DB round trips, not one per line
+  item.** `SalesService.create()` batches the product lookup, the stock
+  decrement, the sale-item inserts, and the ledger-event inserts into one
+  statement each — an N-item sale costs ~6 round trips instead of ~3N+5.
+  Each round trip holds a pooled connection for its full network latency,
+  so this is what actually limits throughput under concurrent load, not
+  raw query cost. `CustomersService.addRepayment()` applies the same
+  pattern for its Transaction and ledger writes; the per-sale balance
+  update there stays a loop since it's bounded by one customer's
+  outstanding sales, not by overall traffic.
+- **Connection pool size is configurable** via `DB_POOL_MAX` (default 20) —
+  node-postgres's own default of 10 becomes the bottleneck before Postgres
+  does once requests are concurrent. Keep it under your Postgres/pooler's
+  own connection cap.
+- **Indexes** exist on every foreign key used in a lookup or join
+  (`sale_items.saleId`/`productId`, `transactions.saleId`, plus the
+  existing `businessId` composites) so those queries don't degrade as
+  table size grows.
+- **Not done**: `synchronize: true` (schema auto-sync from entities) is a
+  real production risk at this scale — it can run schema-altering DDL on
+  every boot, which is unsafe with concurrent writers. Fine for this MVP's
+  single-instance dev setup; switch to versioned migrations
+  (`npm run migration:generate`/`migration:run`, already wired up in
+  `package.json`) before running this with real concurrent traffic.

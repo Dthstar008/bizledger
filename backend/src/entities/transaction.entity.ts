@@ -76,6 +76,7 @@ export class Transaction {
   sale?: Sale;
 
   @Column({ nullable: true })
+  @Index()
   saleId?: string;
 
   @Column({ type: 'enum', enum: TransactionChannel })

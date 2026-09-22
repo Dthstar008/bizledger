@@ -12,6 +12,7 @@ export function registerBusiness(payload: {
   phone?: string;
   email: string;
   password: string;
+  confirmedAdult: boolean;
 }) {
   return apiClient.post<AuthResponse>('/auth/register', payload).then((r) => r.data);
 }

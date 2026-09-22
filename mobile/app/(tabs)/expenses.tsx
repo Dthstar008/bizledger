@@ -1,6 +1,5 @@
 import { useCallback, useState } from 'react';
 import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
-import { useFocusEffect } from 'expo-router';
 import { ScreenContainer } from '../../src/components/ScreenContainer';
 import { Button } from '../../src/components/Button';
 import { TextField } from '../../src/components/TextField';
@@ -9,6 +8,7 @@ import { apiErrorMessage } from '../../src/api/client';
 import { Expense, ExpenseCategory } from '../../src/api/types';
 import { formatNaira } from '../../src/utils/currency';
 import { colors, radius, spacing } from '../../src/theme';
+import { useFocusLoad } from '../../src/hooks/useFocusLoad';
 
 const CATEGORIES: ExpenseCategory[] = ['rent', 'transport', 'salary', 'utilities', 'supplies', 'maintenance', 'other'];
 
@@ -28,11 +28,7 @@ export default function ExpensesScreen() {
     }
   }, []);
 
-  useFocusEffect(
-    useCallback(() => {
-      load();
-    }, [load]),
-  );
+  useFocusLoad(load);
 
   const total = expenses.reduce((sum, e) => sum + e.amount, 0);
 

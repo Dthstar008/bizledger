@@ -1,6 +1,6 @@
 import { useCallback, useState } from 'react';
 import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
-import { router, useFocusEffect } from 'expo-router';
+import { router } from 'expo-router';
 import { ScreenContainer } from '../../src/components/ScreenContainer';
 import { Button } from '../../src/components/Button';
 import { TextField } from '../../src/components/TextField';
@@ -9,6 +9,7 @@ import { apiErrorMessage } from '../../src/api/client';
 import { Customer } from '../../src/api/types';
 import { formatNaira } from '../../src/utils/currency';
 import { colors, radius, spacing } from '../../src/theme';
+import { useFocusLoad } from '../../src/hooks/useFocusLoad';
 
 export default function CustomersScreen() {
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -26,11 +27,7 @@ export default function CustomersScreen() {
     }
   }, []);
 
-  useFocusEffect(
-    useCallback(() => {
-      load();
-    }, [load]),
-  );
+  useFocusLoad(load);
 
   return (
     <ScreenContainer refreshing={loading} onRefresh={load}>

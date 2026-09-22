@@ -16,6 +16,7 @@ interface CartLine {
   productId: string;
   productName: string;
   unitPrice: number;
+  catalogPrice: number;
   quantity: number;
   maxStock: number;
 }
@@ -39,6 +40,8 @@ export default function NewSaleScreen() {
   const [paymentReference, setPaymentReference] = useState('');
   const [channel, setChannel] = useState<TransactionChannel>('bank_transfer');
   const [submitting, setSubmitting] = useState(false);
+  const [editingProductId, setEditingProductId] = useState<string | null>(null);
+  const [priceInput, setPriceInput] = useState('');
 
   useEffect(() => {
     listProducts().then(setProducts).catch((err) => Alert.alert('Could not load products', apiErrorMessage(err)));
@@ -57,13 +60,33 @@ export default function NewSaleScreen() {
       if (product.stockQty < 1) return prev;
       return [
         ...prev,
-        { productId: product.id, productName: product.name, unitPrice: product.sellingPrice, quantity: 1, maxStock: product.stockQty },
+        {
+          productId: product.id,
+          productName: product.name,
+          unitPrice: product.sellingPrice,
+          catalogPrice: product.sellingPrice,
+          quantity: 1,
+          maxStock: product.stockQty,
+        },
       ];
     });
   }
 
   function removeLine(productId: string) {
     setCart((prev) => prev.filter((l) => l.productId !== productId));
+  }
+
+  function startEditPrice(line: CartLine) {
+    setEditingProductId(line.productId);
+    setPriceInput(String(line.unitPrice));
+  }
+
+  function commitPrice(productId: string) {
+    const parsed = parseFloat(priceInput);
+    if (!isNaN(parsed) && parsed >= 0) {
+      setCart((prev) => prev.map((l) => (l.productId === productId ? { ...l, unitPrice: parsed } : l)));
+    }
+    setEditingProductId(null);
   }
 
   const needsCustomer = paymentMethod === 'credit';
@@ -77,7 +100,7 @@ export default function NewSaleScreen() {
     setSubmitting(true);
     try {
       await createSale({
-        items: cart.map((l) => ({ productId: l.productId, quantity: l.quantity })),
+        items: cart.map((l) => ({ productId: l.productId, quantity: l.quantity, unitPrice: l.unitPrice })),
         paymentMethod,
         customerId,
         amountPaid: paidNumber,
@@ -117,14 +140,40 @@ export default function NewSaleScreen() {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Cart</Text>
           {cart.map((line) => (
-            <View key={line.productId} style={styles.cartRow}>
-              <Text style={styles.cartLine}>
-                {line.quantity}× {line.productName}
-              </Text>
-              <Text style={styles.cartLineTotal}>{formatNaira(line.unitPrice * line.quantity)}</Text>
-              <Pressable onPress={() => removeLine(line.productId)}>
-                <Text style={styles.remove}>✕</Text>
-              </Pressable>
+            <View key={line.productId} style={styles.cartLineWrap}>
+              <View style={styles.cartRow}>
+                <Text style={styles.cartLine}>
+                  {line.quantity}× {line.productName}
+                </Text>
+                <Text style={styles.cartLineTotal}>{formatNaira(line.unitPrice * line.quantity)}</Text>
+                <Pressable onPress={() => removeLine(line.productId)}>
+                  <Text style={styles.remove}>✕</Text>
+                </Pressable>
+              </View>
+
+              {editingProductId === line.productId ? (
+                <View style={styles.priceEditRow}>
+                  <TextField
+                    label="Unit price (₦)"
+                    value={priceInput}
+                    onChangeText={setPriceInput}
+                    keyboardType="numeric"
+                    autoFocus
+                  />
+                  <View style={styles.priceEditButtons}>
+                    <Button label="Cancel" variant="secondary" onPress={() => setEditingProductId(null)} />
+                    <Button label="Save price" onPress={() => commitPrice(line.productId)} />
+                  </View>
+                </View>
+              ) : (
+                <Pressable onPress={() => startEditPrice(line)} style={styles.priceRow}>
+                  <Text style={styles.priceRowText}>
+                    @ {formatNaira(line.unitPrice)} each
+                    {line.unitPrice !== line.catalogPrice ? `  ·  catalog ${formatNaira(line.catalogPrice)}` : ''}
+                  </Text>
+                  <Text style={styles.editLink}>Edit price</Text>
+                </Pressable>
+              )}
             </View>
           ))}
           <View style={styles.cartTotalRow}>
@@ -246,9 +295,34 @@ const styles = StyleSheet.create({
     fontSize: 12,
     marginTop: 2,
   },
+  cartLineWrap: {
+    gap: spacing.xs,
+  },
   cartRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: spacing.sm,
+  },
+  priceRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  priceRowText: {
+    fontSize: 12,
+    color: colors.textMuted,
+    flex: 1,
+  },
+  editLink: {
+    fontSize: 12,
+    color: colors.primary,
+    fontWeight: '600',
+  },
+  priceEditRow: {
+    gap: spacing.sm,
+  },
+  priceEditButtons: {
+    flexDirection: 'row',
     gap: spacing.sm,
   },
   cartLine: {

@@ -1,6 +1,6 @@
 import { useCallback, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { router, useFocusEffect } from 'expo-router';
+import { router } from 'expo-router';
 import { ScreenContainer } from '../../src/components/ScreenContainer';
 import { StatCard } from '../../src/components/StatCard';
 import { getDashboardSummary } from '../../src/api/dashboard';
@@ -9,6 +9,7 @@ import { DashboardSummary } from '../../src/api/types';
 import { formatNaira } from '../../src/utils/currency';
 import { useAuthStore } from '../../src/store/auth-store';
 import { colors, radius, spacing } from '../../src/theme';
+import { useFocusLoad } from '../../src/hooks/useFocusLoad';
 
 export default function DashboardScreen() {
   const business = useAuthStore((s) => s.business);
@@ -30,11 +31,7 @@ export default function DashboardScreen() {
     }
   }, []);
 
-  useFocusEffect(
-    useCallback(() => {
-      load();
-    }, [load]),
-  );
+  useFocusLoad(load);
 
   return (
     <ScreenContainer refreshing={loading} onRefresh={load}>

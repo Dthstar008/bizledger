@@ -1,6 +1,5 @@
 import { useCallback, useState } from 'react';
 import { Alert, StyleSheet, Text, View } from 'react-native';
-import { useFocusEffect } from 'expo-router';
 import { ScreenContainer } from '../../src/components/ScreenContainer';
 import { Button } from '../../src/components/Button';
 import { TextField } from '../../src/components/TextField';
@@ -9,6 +8,7 @@ import { apiErrorMessage } from '../../src/api/client';
 import { Product } from '../../src/api/types';
 import { formatNaira } from '../../src/utils/currency';
 import { colors, radius, spacing } from '../../src/theme';
+import { useFocusLoad } from '../../src/hooks/useFocusLoad';
 
 export default function InventoryScreen() {
   const [products, setProducts] = useState<Product[]>([]);
@@ -26,11 +26,7 @@ export default function InventoryScreen() {
     }
   }, []);
 
-  useFocusEffect(
-    useCallback(() => {
-      load();
-    }, [load]),
-  );
+  useFocusLoad(load);
 
   return (
     <ScreenContainer refreshing={loading} onRefresh={load}>

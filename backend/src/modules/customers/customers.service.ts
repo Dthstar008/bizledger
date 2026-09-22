@@ -1,11 +1,12 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
-import { Customer, Sale, Transaction, TransactionPurpose, TransactionChannel, LedgerEventType } from '../../entities';
+import { Customer, Sale, Transaction, TransactionPurpose, TransactionChannel, LedgerEventType, PaymentStatus } from '../../entities';
 import { CreateCustomerDto } from './dto/create-customer.dto';
 import { CreateRepaymentDto } from './dto/create-repayment.dto';
 import { LedgerService } from '../ledger/ledger.service';
 import { SalesService } from '../sales/sales.service';
+import { withConnectionRetry } from '../../common/retry';
 
 @Injectable()
 export class CustomersService {
@@ -19,7 +20,7 @@ export class CustomersService {
   ) {}
 
   create(businessId: string, dto: CreateCustomerDto): Promise<Customer> {
-    return this.customers.save(this.customers.create({ ...dto, businessId }));
+    return withConnectionRetry(() => this.customers.save(this.customers.create({ ...dto, businessId })));
   }
 
   async findAll(businessId: string) {
@@ -62,6 +63,14 @@ export class CustomersService {
    * arrived through.
    */
   async addRepayment(businessId: string, customerId: string, dto: CreateRepaymentDto): Promise<Transaction[]> {
+    return withConnectionRetry(() => this.addRepaymentInner(businessId, customerId, dto));
+  }
+
+  private async addRepaymentInner(
+    businessId: string,
+    customerId: string,
+    dto: CreateRepaymentDto,
+  ): Promise<Transaction[]> {
     return this.dataSource.transaction(async (manager) => {
       const customer = await manager.findOne(Customer, { where: { id: customerId, businessId } });
       if (!customer) throw new NotFoundException('Customer not found');
@@ -73,40 +82,66 @@ export class CustomersService {
         throw new BadRequestException('Repayment exceeds outstanding balance');
       }
 
-      const transactionRepo = manager.getRepository(Transaction);
-      const created: Transaction[] = [];
+      // Work out the FIFO allocation first. The per-sale balance update
+      // stays a loop — it's bounded by this one customer's outstanding
+      // sales, not by overall scale, so it's not the overhead that matters
+      // here. The Transaction and ledger writes are batched below instead
+      // of costing two round trips per sale touched.
       let remaining = dto.amount;
-
+      const allocations: { saleId: string; applied: number; paymentStatus: PaymentStatus }[] = [];
       for (const sale of outstandingSales) {
         if (remaining <= 0) break;
         const applied = Math.min(remaining, sale.outstandingBalance);
         await this.salesService.applyRepayment(sale, applied, manager);
-
-        const transaction = await transactionRepo.save(
-          transactionRepo.create({
-            businessId,
-            customerId,
-            saleId: sale.id,
-            channel: dto.channel,
-            purpose: TransactionPurpose.DEBT_REPAYMENT,
-            amount: applied,
-            reference: dto.reference,
-            note: dto.note,
-            verified: dto.channel === TransactionChannel.CASH,
-          }),
-        );
-        created.push(transaction);
-
-        await this.ledgerService.record(
-          businessId,
-          LedgerEventType.CUSTOMER_CREDIT_REPAID,
-          applied,
-          { customerId, saleId: sale.id, transactionId: transaction.id, paymentStatus: sale.paymentStatus },
-          manager,
-        );
-
+        allocations.push({ saleId: sale.id, applied, paymentStatus: sale.paymentStatus });
         remaining -= applied;
       }
+
+      const verified = dto.channel === TransactionChannel.CASH;
+      const transactionRepo = manager.getRepository(Transaction);
+
+      // One bulk INSERT for every Transaction this repayment produces
+      // (one per sale it touches), instead of one round trip each.
+      const insertResult = await transactionRepo.insert(
+        allocations.map((a) => ({
+          businessId,
+          customerId,
+          saleId: a.saleId,
+          channel: dto.channel,
+          purpose: TransactionPurpose.DEBT_REPAYMENT,
+          amount: a.applied,
+          reference: dto.reference,
+          note: dto.note,
+          verified,
+        })),
+      );
+
+      const created = allocations.map(
+        (a, idx) =>
+          ({
+            businessId,
+            customerId,
+            saleId: a.saleId,
+            channel: dto.channel,
+            purpose: TransactionPurpose.DEBT_REPAYMENT,
+            amount: a.applied,
+            reference: dto.reference,
+            note: dto.note,
+            verified,
+            id: insertResult.identifiers[idx].id as string,
+          }) as Transaction,
+      );
+
+      // Likewise, one bulk INSERT for every ledger event instead of one per sale.
+      await this.ledgerService.recordMany(
+        allocations.map((a, idx) => ({
+          businessId,
+          type: LedgerEventType.CUSTOMER_CREDIT_REPAID,
+          amount: a.applied,
+          metadata: { customerId, saleId: a.saleId, transactionId: created[idx].id, paymentStatus: a.paymentStatus },
+        })),
+        manager,
+      );
 
       return created;
     });
