@@ -1,13 +1,17 @@
 import axios from 'axios';
 import Constants from 'expo-constants';
+import { Platform } from 'react-native';
 import { useAuthStore } from '../store/auth-store';
 
-// Set EXPO_PUBLIC_API_URL when running on a device/emulator where
-// "localhost" doesn't reach your dev machine (e.g. your machine's LAN IP).
+// Android emulators need 10.0.2.2 to reach the host machine. iOS simulators
+// and web preview can use localhost. Physical devices still need an explicit
+// LAN IP via EXPO_PUBLIC_API_URL.
+const defaultApiUrl = Platform.OS === 'android' ? 'http://10.0.2.2:3000' : 'http://localhost:3000';
+
 const apiUrl =
   process.env.EXPO_PUBLIC_API_URL ??
   (Constants.expoConfig?.extra?.apiUrl as string | undefined) ??
-  'http://localhost:3000';
+  defaultApiUrl;
 
 export const apiClient = axios.create({
   baseURL: apiUrl,
