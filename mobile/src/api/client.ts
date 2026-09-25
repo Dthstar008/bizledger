@@ -3,10 +3,17 @@ import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 import { selectIsOwner, useAuthStore } from '../store/auth-store';
 
-// Android emulators need 10.0.2.2 to reach the host machine. iOS simulators
-// and web preview can use localhost. Physical devices still need an explicit
-// LAN IP via EXPO_PUBLIC_API_URL.
-const defaultApiUrl = Platform.OS === 'android' ? 'http://10.0.2.2:3000' : 'http://localhost:3000';
+const HOSTED_API_URL = 'https://bizledger-api-iitk.onrender.com';
+
+// In development, Android emulators need 10.0.2.2 to reach the host machine
+// and iOS simulators/web can use localhost (physical devices set an explicit
+// LAN IP via EXPO_PUBLIC_API_URL). A release build must never fall back to
+// those, since they don't exist on a real phone, so it uses the hosted API.
+const defaultApiUrl = __DEV__
+  ? Platform.OS === 'android'
+    ? 'http://10.0.2.2:3000'
+    : 'http://localhost:3000'
+  : HOSTED_API_URL;
 
 const apiUrl =
   process.env.EXPO_PUBLIC_API_URL ??
