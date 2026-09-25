@@ -7,20 +7,32 @@ for the full product blueprint this build follows.
 
 ## Status
 
-Stage 1 of the roadmap (Merchant MVP):
+Live API: <https://bizledger-api-iitk.onrender.com> (`/health` for a status check).
 
-- [x] Auth (register/login, JWT, one business per account)
+**Stage 1 – Merchant MVP (built)**
+
+- [x] Auth (register/login, JWT, 18+ confirmation recorded at sign-up)
 - [x] Products / inventory
-- [x] Sales (auto-deducts stock, splits cash/credit, writes ledger events)
+- [x] Sales (auto-deducts stock, splits cash/credit, per-line price override,
+      writes ledger events)
 - [x] Expenses
-- [x] Customers + debt tracking + repayments
+- [x] Customers + debt tracking + repayments (allocated oldest-first)
 - [x] Dashboard summary (revenue, profit, cash, inventory value, debt, insights)
 - [x] Append-only ledger event log
-- [x] Mobile app (React Native / Expo Router) — Dashboard, Sales, Inventory,
-      Customers (with debt/repayment detail), Expenses
-- [x] Verified end-to-end against a live Supabase Postgres database (register
-      → seed → login → sale → dashboard math all checked out)
-- [ ] Suppliers, offline mode, receipts (Stage 2)
+- [x] Mobile app (React Native / Expo Router)
+
+**Stage 2 – Business management (built)**
+
+- [x] Employees and roles: owners create staff accounts; staff can sell and
+      manage customers but never see costs, profit, expenses or analytics
+- [x] Multiple branches: sales and expenses are tagged to a branch, owners
+      filter the dashboard and analytics by branch (stock stays one shared pool)
+- [x] Barcode scanning at point of sale and when adding stock
+- [x] Analytics: daily sales trend, top products and customers, payment mix
+- [x] WhatsApp receipts and debt reminders (deep links, no API account)
+
+**Not built yet:** suppliers and purchases, offline mode, exports and PDF
+receipts, per-branch stock, password reset, payment-provider integrations.
 
 ## Running the backend
 
@@ -56,33 +68,55 @@ is just standard Postgres, so any of these work as `DB_HOST`/etc. in step 2:
    ```bash
    npm run start:dev
    ```
-   The API listens on `http://localhost:3000`. Tables are auto-created from
-   entities in development (`synchronize: true` — switch to migrations before
-   production).
+   The API listens on `http://localhost:3000`. The schema is managed by
+   versioned migrations in `src/database/migrations/`, which run
+   automatically on boot (`migrationsRun: true`). To change the schema, edit
+   the entities, then `npm run migration:generate -- src/database/migrations/<Name>`
+   and review the SQL before committing; `npm run migration:revert` undoes
+   the latest one.
 4. Optional: seed a demo merchant (mirrors the blueprint's examples —
    Oraimo Charger, customer Chinedu Okafor, a cash sale, a credit sale and a
-   part-repayment):
+   part-repayment), plus a second branch and a staff user:
    ```bash
    npm run seed
    ```
-   Logs in as `demo@bizledger.ng` / `password123`.
+   Owner: `demo@bizledger.ng` / `password123`. Staff (Lekki branch):
+   `staff@bizledger.ng` / `password123`.
+
+### Deploying
+
+`backend/Dockerfile` builds the production image (`npm ci`, build, prune dev
+dependencies, `node dist/main`), and `render.yaml` is a Render blueprint for it.
+Set `NODE_ENV=production`, the `DB_*` variables and a real `JWT_SECRET`
+(`openssl rand -base64 48`); the app refuses to start in production without
+one. `CORS_ORIGINS` is closed by default in production, which is fine for the
+mobile app because native clients aren't subject to browser CORS.
 
 ## API overview
 
-All routes except `/auth/*` and `/health` require `Authorization: Bearer <token>`
+All routes except `/`, `/auth/*` and `/health` require `Authorization: Bearer <token>`
 from `/auth/login` or `/auth/register`. Every resource is scoped to the
 authenticated user's business — there is no cross-business access.
 
-| Area | Routes |
-| --- | --- |
-| Auth | `POST /auth/register`, `POST /auth/login` |
-| Business | `GET/PATCH /business/me` |
-| Products | `GET/POST /products`, `GET/PATCH/DELETE /products/:id`, `GET /products/low-stock` |
-| Sales | `GET/POST /sales`, `GET /sales/:id` |
-| Expenses | `GET/POST /expenses` |
-| Customers | `GET/POST /customers`, `GET /customers/:id`, `POST /customers/:id/repayments` |
-| Ledger | `GET /ledger/events` |
-| Dashboard | `GET /dashboard/summary?from=&to=` |
+Accounts are either **owner** or **staff**. Owners can call everything; the
+Access column shows what staff can do. Owners can also send an `X-Branch-Id`
+header to work in one branch (or omit it for "all branches"); staff are pinned
+to their assigned branch and the header is ignored.
+
+| Area | Routes | Access |
+| --- | --- | --- |
+| Auth | `POST /auth/register`, `POST /auth/login` | public |
+| Business | `GET/PATCH /business/me` | staff: read only |
+| Products | `GET/POST /products`, `GET /products/low-stock`, `GET /products/barcode/:code`, `GET /products/:id` | staff: yes, without cost fields |
+| Products (edit) | `PATCH/DELETE /products/:id` | owner only |
+| Sales | `GET/POST /sales`, `GET /sales/:id` | staff: yes, without cost fields |
+| Customers | `GET/POST /customers`, `GET /customers/:id`, `POST /customers/:id/repayments` | staff: yes |
+| Expenses | `GET/POST /expenses` | owner only |
+| Dashboard | `GET /dashboard/summary?from=&to=` | owner only |
+| Analytics | `GET /analytics?from=&to=` | owner only |
+| Ledger | `GET /ledger/events` | owner only |
+| Employees | `GET/POST /employees`, `DELETE /employees/:id` | owner only |
+| Branches | `GET/POST /branches`, `PATCH /branches/:id` | staff: list their own branch |
 
 A sale looks like:
 
@@ -196,10 +230,12 @@ confirmed.
    npm install
    cp .env.example .env
    ```
-   - Web preview or iOS simulator: `http://localhost:3000` (the default) works.
+   - Web preview or iOS simulator: `http://localhost:3000` (the default in
+     development) works.
    - Physical device or Android emulator: set `EXPO_PUBLIC_API_URL` in `.env`
      to your machine's LAN IP, e.g. `http://192.168.1.50:3000` — the device
      can't resolve `localhost` as your dev machine.
+   - Release builds (below) always use a public HTTPS URL.
 2. Start Expo:
    ```bash
    npm start
@@ -210,10 +246,23 @@ confirmed.
    (`demo@bizledger.ng` / `password123`) if you ran `npm run seed` in `backend/`.
 
 The app is built with Expo Router (file-based routing under `mobile/app/`),
-Zustand for the persisted auth token, and Axios for the API client
+Zustand for the persisted session, and Axios for the API client
 (`mobile/src/api/`). Screens: Dashboard, Sales (+ New Sale), Inventory,
-Customers (+ debt detail/repayment), Expenses — matching the MVP module table
-in the blueprint.
+Customers (+ debt detail/repayment), Expenses, Analytics, and Team & branches.
+Owners see all of them; staff see Sales, Inventory and Customers.
+
+### Building an installable Android app
+
+```bash
+cd mobile
+eas build --platform android --profile preview
+```
+
+The `preview` and `production` profiles in `eas.json` set
+`EXPO_PUBLIC_API_URL` to the hosted API, and `app.config.ts` fails the build
+if it is missing or not a public HTTPS address, so an app can't ship pointing
+at a local or emulator address. Scanning barcodes needs a real device and a
+fresh build, because the camera is a native module.
 
 ## Design notes
 
@@ -225,7 +274,16 @@ in the blueprint.
   readability at this stage; revisit if precision issues show up.
 - **Multi-tenancy** is per-business, enforced by scoping every query to the
   `businessId` on the authenticated user's JWT — there's no shared data
-  between merchants.
+  between merchants. Row Level Security is also enabled on every table with
+  no policies, which closes Supabase's public REST surface; the backend
+  connects as the table owner and bypasses it, so isolation itself is
+  enforced in application code.
+- **Roles** are read from the database on each request (cached for 30 seconds),
+  not trusted from the token, so removing a staff member takes effect quickly.
+  Staff responses have cost fields (`costPrice`, `costTotal`, `unitCostPrice`)
+  stripped by an interceptor.
+- **Branches** tag sales and expenses only. Stock is one business-wide pool,
+  so branch reports show where money was made but not per-branch inventory.
 
 ## Performance
 
@@ -250,9 +308,6 @@ in the blueprint.
   (`sale_items.saleId`/`productId`, `transactions.saleId`, plus the
   existing `businessId` composites) so those queries don't degrade as
   table size grows.
-- **Not done**: `synchronize: true` (schema auto-sync from entities) is a
-  real production risk at this scale — it can run schema-altering DDL on
-  every boot, which is unsafe with concurrent writers. Fine for this MVP's
-  single-instance dev setup; switch to versioned migrations
-  (`npm run migration:generate`/`migration:run`, already wired up in
-  `package.json`) before running this with real concurrent traffic.
+- **Schema changes are versioned migrations**, not auto-sync
+  (`synchronize: false`), so a deploy never alters the schema as a side
+  effect of entity edits.

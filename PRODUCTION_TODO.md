@@ -1,11 +1,6 @@
 # Production Readiness TODO
 
-This project is a NestJS API + an Expo/React Native mobile app — not a
-website — so a generic "before you launch your website" checklist doesn't
-map 1:1. This document takes that checklist, translates each item into
-what it actually means for an API + mobile app, marks what's already done,
-and adds the real gaps found while building this that the generic list
-doesn't cover at all (a JWT secret with an insecure default, for one).
+This project is a NestJS API + an Expo/React Native mobile app.
 
 Status key: ✅ done · ⚠️ todo · ➖ not applicable to this product shape
 
@@ -16,7 +11,7 @@ Status key: ✅ done · ⚠️ todo · ➖ not applicable to this product shape
 | 1 | Privacy policy page | Required for App Store/Play Store submission, and for NDPA (Nigeria Data Protection Act) compliance since this handles financial data — see blueprint's "Regulatory Architecture" section | ⚠️ Not written |
 | 2 | Terms & conditions | Same — required before real users, before app store submission | ⚠️ Not written |
 | 3 | Secrets off the frontend | `backend/.env` is gitignored and never committed; mobile has no secrets baked in (only a public API URL). Verified no `.env` files are tracked in git (`git ls-files \| grep .env` → nothing) | ✅ Done |
-| 4 | Force HTTPS | Backend has no HTTPS of its own yet — it's only ever run as plain HTTP on a dev machine. Whatever hosts it in production (Railway/Render/Fly.io/etc.) needs to terminate TLS and the app needs to sit behind it | ⚠️ Not deployed anywhere yet |
+| 4 | Force HTTPS | The API is hosted on Render, which terminates TLS. Release builds of the app (`app.config.ts`) refuse to build without a public HTTPS API URL | ✅ Done |
 | 5 | Cookie consent banner | No web frontend, no cookies | ➖ N/A |
 | 6 | Meta titles + descriptions | No web pages | ➖ N/A |
 | 7 | Social preview image | No web pages to share links to | ➖ N/A |
@@ -27,7 +22,7 @@ Status key: ✅ done · ⚠️ todo · ➖ not applicable to this product shape
 | 12 | Check page load speed | Mobile equivalent: app startup time and API latency. API round-trip count and connection pooling already tuned this session (see README "Performance") | ✅ API done · ⚠️ mobile cold-start not measured |
 | 13 | Fix color contrast | Mobile UI theme (`mobile/src/theme.ts`) hasn't been run through a contrast checker | ⚠️ Not audited |
 | 14 | Make it mobile friendly | It already is the mobile app | ➖ N/A |
-| 15 | Custom 404 page | NestJS returns its default JSON 404 for unknown routes; Expo Router has its own default not-found screen. Neither is customized, but neither is broken | ⚠️ Default, not customized |
+| 15 | Custom 404 page | NestJS returns its default JSON 404 for unknown routes (the bare `/` URL now returns a small status message instead); Expo Router has its own default not-found screen. Neither is customized, but neither is broken | ⚠️ Default, not customized |
 | 16 | Fix broken links | No web pages | ➖ N/A |
 | 17 | Form validation | Every DTO across every endpoint uses `class-validator` with `whitelist`/`forbidNonWhitelisted` enabled globally | ✅ Done |
 | 18 | Spam protection | Mobile equivalent: rate limiting on `/auth/register` and `/auth/login` so they can't be hammered | ⚠️ Not implemented |
@@ -36,33 +31,29 @@ Status key: ✅ done · ⚠️ todo · ➖ not applicable to this product shape
 
 ## Real gaps found while building this (not on the generic list)
 
-Roughly in priority order:
+Roughly in priority order. Status as of 2026-09-25:
 
-1. **`JWT_SECRET` has an insecure default fallback** (`'dev-secret-change-me'`
-   in `backend/src/config/configuration.ts`) — if this is ever deployed
-   without explicitly setting the env var, every JWT is forgeable with a
-   secret anyone can read from the source. Must be a real generated secret
-   before any real deployment, with no fallback.
-2. **CORS is wide open** — `app.enableCors()` in `main.ts` takes no options,
-   so any origin can call the API. Fine for local dev; should be restricted
-   to the actual app's origin(s) before going live.
-3. **`synchronize: true`** — the schema auto-syncs from entities on every
-   boot. Convenient for solo MVP dev, unsafe once there's real concurrent
-   traffic (a boot-time schema change can lock tables mid-use). Switch to
-   versioned migrations (`npm run migration:generate` / `migration:run` —
-   already wired up in `package.json`, just unused so far).
-4. **No deployment target chosen** — the backend has only ever run on a
-   local dev machine against Supabase. Needs an actual host (Railway,
-   Render, Fly.io, a VPS, etc.) before "production" means anything.
-5. **Barely any automated tests** — one spec file exists
-   (`sales.service.spec.ts`, covering the dashboard aggregate query). The
-   money-math-heavy paths (sale creation, FIFO repayment allocation,
-   payment status transitions) have only been verified by hand against
-   live Supabase this session, not by a test suite that runs on every change.
-6. **No CI** — nothing runs the build/typecheck/tests automatically on
-   push; everything so far has been manual.
-7. **No backup/disaster-recovery plan** for the Supabase database beyond
-   whatever Supabase does by default on your plan tier.
+1. ✅ **`JWT_SECRET` insecure default** — fixed. In production the app
+   refuses to start without `JWT_SECRET` (`backend/src/config/configuration.ts`);
+   the dev-only fallback remains for local work.
+2. ✅ **CORS wide open** — fixed. Unset `CORS_ORIGINS` is permissive in
+   development and closed in production; set it to an allowlist if a web
+   client is ever added. Native mobile clients aren't subject to CORS.
+3. ✅ **`synchronize: true`** — fixed. The schema is now managed by versioned
+   migrations that run on boot (`src/database/migrations/`), each verified in
+   a scratch schema before being applied.
+4. ✅ **No deployment target** — fixed. The API runs on Render from
+   `backend/Dockerfile` (blueprint in `render.yaml`) against Supabase.
+5. ⚠️ **Test coverage is partial** — 33 unit tests cover sale creation,
+   FIFO repayment allocation, payment-status transitions, roles, branch
+   context, employees and analytics. There are no integration tests against a
+   real database and no mobile tests; those paths were verified by hand
+   against the live API.
+6. ➖ **CI** — deliberately skipped for now (decision, not an oversight).
+   Build, typecheck and tests are run manually before each push.
+7. ⚠️ **No backup/disaster-recovery plan** for the database beyond whatever
+   Supabase does by default on the current plan tier. Note the free tier may
+   not include point-in-time recovery.
 8. **NDPA compliance review** — the blueprint itself flags this (see
    "Regulatory Architecture" and "Sources and Further Reading" in the PDF):
    privacy, security, access controls, audit logging, consent, data
@@ -76,6 +67,19 @@ Roughly in priority order:
 10. **Rate limiting isn't just an auth concern** — item 18 above calls out
     auth specifically, but sale/expense/product creation are also
     unthrottled per-user, worth a general look once there's real traffic.
+
+## Stage 2 additions to keep in mind
+
+- Roles are enforced server-side (`RolesGuard`), but only the routes listed in
+  the README access table are restricted. New routes default to "any signed-in
+  user", so give each new route an explicit `@Roles(...)` decision.
+- Staff cost redaction (`RedactCostsInterceptor`) matches field names
+  (`costPrice`, `costTotal`, `unitCostPrice`). A new cost-like field needs
+  adding to that list.
+- Row Level Security is enabled with no policies on every table. Tenant
+  isolation is enforced in application code, not by the database.
+- The camera permission text is in `mobile/app.json`; store listings will need
+  a matching privacy-policy disclosure (item 1).
 
 ## Reviewed against an Instagram reel's legal-exposure checklist (2026-09-21)
 
@@ -131,7 +135,7 @@ work to look thorough.
 ## Explicitly out of scope for "production-ready MVP"
 
 Per the blueprint's own roadmap, these are later-stage and shouldn't block
-an initial launch: Stage 2 features (suppliers, offline mode, receipts),
-draft/cancel/refund sale workflows (schema-ready, no UI/endpoint yet), and
+an initial launch: suppliers and purchases, offline mode, exports and PDF
+receipts, per-branch stock, draft/cancel/refund sale workflows (schema-ready, no UI/endpoint yet), and
 Level 2/3 payment verification (a real payment-provider integration — see
 README "The app is a ledger, not a payment rail").

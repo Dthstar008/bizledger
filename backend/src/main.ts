@@ -1,5 +1,5 @@
 import { NestFactory } from '@nestjs/core';
-import { ValidationPipe } from '@nestjs/common';
+import { Logger, ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import compression from 'compression';
 import { AppModule } from './app.module';
@@ -34,6 +34,6 @@ async function bootstrap() {
 
   const port = config.get<number>('port') ?? 3000;
   await app.listen(port);
-  console.log(`BizLedger API listening on http://localhost:${port}`);
+  new Logger('Bootstrap').log(`BizLedger API listening on port ${port}`);
 }
 bootstrap();
