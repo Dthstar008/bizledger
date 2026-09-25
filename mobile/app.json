@@ -17,7 +17,8 @@
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "package": "com.serraphsorganization.bizledger"
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -25,6 +26,13 @@
     "plugins": [
       "expo-router",
       "expo-status-bar"
-    ]
+    ],
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "b043e1b7-56a4-4710-8714-c19bbffe750d"
+      }
+    },
+    "owner": "serraphs-organization"
   }
 }
