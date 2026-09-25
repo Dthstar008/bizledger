@@ -1,5 +1,11 @@
 import { Column, CreateDateColumn, Entity, JoinColumn, ManyToOne, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
 import { Business } from './business.entity';
+import { Branch } from './branch.entity';
+
+export enum Role {
+  OWNER = 'owner',
+  STAFF = 'staff',
+}
 
 @Entity('users')
 export class User {
@@ -32,6 +38,17 @@ export class User {
 
   @Column()
   businessId: string;
+
+  @Column({ type: 'enum', enum: Role, default: Role.OWNER })
+  role: Role;
+
+  /** Staff are pinned to one branch; owners leave this null and pick per request. */
+  @ManyToOne(() => Branch, { onDelete: 'SET NULL', nullable: true })
+  @JoinColumn({ name: 'branchId' })
+  branch?: Branch;
+
+  @Column({ type: 'uuid', nullable: true })
+  branchId?: string | null;
 
   @CreateDateColumn()
   createdAt: Date;

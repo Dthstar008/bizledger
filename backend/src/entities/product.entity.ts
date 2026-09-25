@@ -21,6 +21,9 @@ export class Product {
   @Column({ nullable: true })
   sku?: string;
 
+  @Column({ type: 'varchar', nullable: true })
+  barcode?: string | null;
+
   @Column('decimal', { precision: 14, scale: 2, transformer: new DecimalTransformer() })
   costPrice: number;
 

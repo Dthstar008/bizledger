@@ -12,6 +12,7 @@ import {
   Expense,
   Transaction,
   LedgerEvent,
+  Branch,
 } from './entities';
 import { AuthModule } from './modules/auth/auth.module';
 import { BusinessesModule } from './modules/businesses/businesses.module';
@@ -21,6 +22,9 @@ import { SalesModule } from './modules/sales/sales.module';
 import { ExpensesModule } from './modules/expenses/expenses.module';
 import { LedgerModule } from './modules/ledger/ledger.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
+import { BranchesModule } from './modules/branches/branches.module';
+import { EmployeesModule } from './modules/employees/employees.module';
+import { AnalyticsModule } from './modules/analytics/analytics.module';
 import { AppController } from './app.controller';
 
 @Module({
@@ -36,7 +40,7 @@ import { AppController } from './app.controller';
         username: config.get<string>('database.username'),
         password: config.get<string>('database.password'),
         database: config.get<string>('database.name'),
-        entities: [Business, User, Product, Customer, Sale, SaleItem, Expense, Transaction, LedgerEvent],
+        entities: [Business, User, Product, Customer, Sale, SaleItem, Expense, Transaction, LedgerEvent, Branch],
         ssl: config.get<boolean>('database.ssl') ? { rejectUnauthorized: false } : false,
         // Schema is managed through versioned migrations now (see
         // src/database/migrations/), not auto-sync — a boot-time schema
@@ -87,6 +91,9 @@ import { AppController } from './app.controller';
     ExpensesModule,
     LedgerModule,
     DashboardModule,
+    BranchesModule,
+    EmployeesModule,
+    AnalyticsModule,
   ],
   controllers: [AppController],
 })

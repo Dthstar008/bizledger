@@ -2,6 +2,8 @@ import 'dotenv/config';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from '../app.module';
 import { AuthService } from '../modules/auth/auth.service';
+import { BranchesService } from '../modules/branches/branches.service';
+import { EmployeesService } from '../modules/employees/employees.service';
 import { ProductsService } from '../modules/products/products.service';
 import { CustomersService } from '../modules/customers/customers.service';
 import { SalesService } from '../modules/sales/sales.service';
@@ -21,6 +23,8 @@ async function seed() {
   const customersService = app.get(CustomersService);
   const salesService = app.get(SalesService);
   const expensesService = app.get(ExpensesService);
+  const branchesService = app.get(BranchesService, { strict: false });
+  const employeesService = app.get(EmployeesService, { strict: false });
 
   const email = 'demo@bizledger.ng';
   let auth;
@@ -37,6 +41,23 @@ async function seed() {
     auth = await authService.login({ email, password: 'password123' });
   }
   const businessId = auth.business.id;
+
+  // Stage 2: a second branch and a staff member pinned to it, so the demo
+  // shows roles and branch filtering out of the box.
+  const branches = await branchesService.findAll(businessId);
+  const mainBranch = branches.find((b) => b.isDefault) ?? branches[0];
+  let lekki = branches.find((b) => b.name === 'Lekki Branch');
+  if (!lekki) lekki = await branchesService.create(businessId, { name: 'Lekki Branch', address: 'Lekki Phase 1, Lagos' });
+  try {
+    await employeesService.create(businessId, {
+      name: 'Ada Okoye',
+      email: 'staff@bizledger.ng',
+      password: 'password123',
+      branchId: lekki.id,
+    });
+  } catch {
+    // already seeded
+  }
 
   const charger = await productsService.create(businessId, {
     name: 'Oraimo Charger',
@@ -64,14 +85,14 @@ async function seed() {
   await salesService.create(businessId, {
     items: [{ productId: charger.id, quantity: 2 }],
     paymentMethod: PaymentMethod.CASH,
-  });
+  }, mainBranch?.id);
 
   await salesService.create(businessId, {
     items: [{ productId: earbuds.id, quantity: 1 }],
     paymentMethod: PaymentMethod.CREDIT,
     customerId: chinedu.id,
     amountPaid: 0,
-  });
+  }, lekki.id);
 
   await customersService.addRepayment(businessId, chinedu.id, {
     amount: 5000,
@@ -86,7 +107,8 @@ async function seed() {
   });
 
   console.log('Seed complete.');
-  console.log(`Login with email "${email}" and password "password123"`);
+  console.log(`Owner login: "${email}" / "password123"`);
+  console.log('Staff login: "staff@bizledger.ng" / "password123" (Lekki Branch)');
 
   await app.close();
 }

@@ -7,3 +7,4 @@ export * from './sale-item.entity';
 export * from './expense.entity';
 export * from './transaction.entity';
 export * from './ledger-event.entity';
+export * from './branch.entity';

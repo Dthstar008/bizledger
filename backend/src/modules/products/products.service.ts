@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
 import { Product, LedgerEventType } from '../../entities';
@@ -6,6 +6,20 @@ import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { LedgerService } from '../ledger/ledger.service';
 import { withConnectionRetry } from '../../common/retry';
+
+/** Blank barcodes are stored as NULL so the per-business unique index only applies to real codes. */
+export function normalizeBarcode(barcode?: string): string | null {
+  const trimmed = barcode?.trim();
+  return trimmed ? trimmed : null;
+}
+
+function toBarcodeConflict(err: unknown): unknown {
+  const e = err as { code?: string; driverError?: { code?: string } };
+  if ((e?.code ?? e?.driverError?.code) === '23505') {
+    return new ConflictException('Another product already uses this barcode');
+  }
+  return err;
+}
 
 @Injectable()
 export class ProductsService {
@@ -21,12 +35,16 @@ export class ProductsService {
     // these were two independent writes with nothing to roll either back.
     // Retried on top because a connection that fails to even establish
     // means nothing was written yet, so retrying is safe.
-    return withConnectionRetry(() => this.createInner(businessId, dto));
+    return withConnectionRetry(() => this.createInner(businessId, dto)).catch((err) => {
+      throw toBarcodeConflict(err);
+    });
   }
 
   private async createInner(businessId: string, dto: CreateProductDto): Promise<Product> {
     return this.dataSource.transaction(async (manager) => {
-      const product = await manager.getRepository(Product).save(this.products.create({ ...dto, businessId }));
+      const product = await manager
+        .getRepository(Product)
+        .save(this.products.create({ ...dto, barcode: normalizeBarcode(dto.barcode), businessId }));
       await this.ledgerService.record(
         businessId,
         LedgerEventType.PRODUCT_CREATED,
@@ -42,6 +60,12 @@ export class ProductsService {
     return this.products.find({ where: { businessId }, order: { name: 'ASC' } });
   }
 
+  async findByBarcode(businessId: string, code: string): Promise<Product> {
+    const product = await this.products.findOne({ where: { businessId, barcode: code.trim() } });
+    if (!product) throw new NotFoundException(`No product with barcode ${code}`);
+    return product;
+  }
+
   async findOne(businessId: string, id: string): Promise<Product> {
     const product = await this.products.findOne({ where: { id, businessId } });
     if (!product) throw new NotFoundException('Product not found');
@@ -51,7 +75,12 @@ export class ProductsService {
   async update(businessId: string, id: string, dto: UpdateProductDto): Promise<Product> {
     const product = await this.findOne(businessId, id);
     Object.assign(product, dto);
-    return this.products.save(product);
+    if (dto.barcode !== undefined) product.barcode = normalizeBarcode(dto.barcode);
+    try {
+      return await this.products.save(product);
+    } catch (err) {
+      throw toBarcodeConflict(err);
+    }
   }
 
   async remove(businessId: string, id: string): Promise<void> {

@@ -25,6 +25,9 @@ export class Expense {
   @Column()
   businessId: string;
 
+  @Column({ type: 'uuid', nullable: true })
+  branchId?: string | null;
+
   @Column({ type: 'enum', enum: ExpenseCategory, default: ExpenseCategory.OTHER })
   category: ExpenseCategory;
 

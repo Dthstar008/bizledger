@@ -65,11 +65,11 @@ export class SalesService {
    * each round trip holds a connection out of the pool for its full
    * network latency, and that's the resource that runs out first at scale.
    */
-  async create(businessId: string, dto: CreateSaleDto): Promise<Sale> {
-    return withConnectionRetry(() => this.createInner(businessId, dto));
+  async create(businessId: string, dto: CreateSaleDto, branchId?: string): Promise<Sale> {
+    return withConnectionRetry(() => this.createInner(businessId, dto, branchId));
   }
 
-  private async createInner(businessId: string, dto: CreateSaleDto): Promise<Sale> {
+  private async createInner(businessId: string, dto: CreateSaleDto, branchId?: string): Promise<Sale> {
     return this.dataSource.transaction(async (manager) => {
       const productRepo = manager.getRepository(Product);
       const saleRepo = manager.getRepository(Sale);
@@ -161,6 +161,7 @@ export class SalesService {
       const sale = await saleRepo.save(
         saleRepo.create({
           businessId,
+          branchId: branchId ?? null,
           customerId: dto.customerId,
           paymentMethod: dto.paymentMethod,
           status: SaleStatus.CONFIRMED,
@@ -248,9 +249,9 @@ export class SalesService {
     });
   }
 
-  findAll(businessId: string): Promise<Sale[]> {
+  findAll(businessId: string, branchId?: string): Promise<Sale[]> {
     return this.sales.find({
-      where: { businessId },
+      where: branchId ? { businessId, branchId } : { businessId },
       relations: ['items', 'customer'],
       order: { createdAt: 'DESC' },
     });
@@ -281,8 +282,8 @@ export class SalesService {
     return manager.getRepository(Sale).save(sale);
   }
 
-  async summarizeForPeriod(businessId: string, from: Date, to: Date) {
-    const result = await this.sales
+  async summarizeForPeriod(businessId: string, from: Date, to: Date, branchId?: string) {
+    const query = this.sales
       .createQueryBuilder('sale')
       .select('COALESCE(SUM(sale.totalAmount), 0)', 'revenue')
       .addSelect('COALESCE(SUM(sale.totalAmount - sale.costTotal), 0)', 'grossProfit')
@@ -291,8 +292,9 @@ export class SalesService {
       .addSelect('COUNT(sale.id)', 'saleCount')
       .where('sale.businessId = :businessId', { businessId })
       .andWhere('sale.createdAt >= :from', { from })
-      .andWhere('sale.createdAt <= :to', { to })
-      .getRawOne<{
+      .andWhere('sale.createdAt <= :to', { to });
+    if (branchId) query.andWhere('sale.branchId = :branchId', { branchId });
+    const result = await query.getRawOne<{
         revenue: string;
         grossProfit: string;
         cashCollected: string;

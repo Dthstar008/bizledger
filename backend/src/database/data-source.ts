@@ -10,6 +10,7 @@ import {
   Expense,
   Transaction,
   LedgerEvent,
+  Branch,
 } from '../entities';
 
 export const AppDataSource = new DataSource({
@@ -19,7 +20,7 @@ export const AppDataSource = new DataSource({
   username: process.env.DB_USERNAME || 'postgres',
   password: process.env.DB_PASSWORD || 'postgres',
   database: process.env.DB_DATABASE || 'bizledger',
-  entities: [Business, User, Product, Customer, Sale, SaleItem, Expense, Transaction, LedgerEvent],
+  entities: [Business, User, Product, Customer, Sale, SaleItem, Expense, Transaction, LedgerEvent, Branch],
   migrations: ['src/database/migrations/*.ts'],
   synchronize: false,
   logging: process.env.NODE_ENV === 'development',

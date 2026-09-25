@@ -18,7 +18,7 @@ export class DashboardService {
     private readonly customersService: CustomersService,
   ) {}
 
-  async getSummary(businessId: string, from?: Date, to?: Date) {
+  async getSummary(businessId: string, from?: Date, to?: Date, branchId?: string) {
     const now = to ?? new Date();
     const periodStart = from ?? new Date(now.getFullYear(), now.getMonth(), 1);
     const periodLengthMs = now.getTime() - periodStart.getTime();
@@ -27,10 +27,10 @@ export class DashboardService {
 
     const [current, previous, expenses, previousExpenses, inventoryValue, lowStock, outstandingDebt] =
       await Promise.all([
-        this.salesService.summarizeForPeriod(businessId, periodStart, now),
-        this.salesService.summarizeForPeriod(businessId, previousPeriodStart, previousPeriodEnd),
-        this.expensesService.totalForPeriod(businessId, periodStart, now),
-        this.expensesService.totalForPeriod(businessId, previousPeriodStart, previousPeriodEnd),
+        this.salesService.summarizeForPeriod(businessId, periodStart, now, branchId),
+        this.salesService.summarizeForPeriod(businessId, previousPeriodStart, previousPeriodEnd, branchId),
+        this.expensesService.totalForPeriod(businessId, periodStart, now, branchId),
+        this.expensesService.totalForPeriod(businessId, previousPeriodStart, previousPeriodEnd, branchId),
         this.productsService.totalStockValue(businessId),
         this.productsService.lowStock(businessId),
         this.customersService.totalOutstandingDebt(businessId),

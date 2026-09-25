@@ -40,6 +40,9 @@ export class Sale {
   @Column()
   businessId: string;
 
+  @Column({ type: 'uuid', nullable: true })
+  branchId?: string | null;
+
   @ManyToOne(() => Customer, { nullable: true, onDelete: 'SET NULL' })
   @JoinColumn({ name: 'customerId' })
   customer?: Customer;

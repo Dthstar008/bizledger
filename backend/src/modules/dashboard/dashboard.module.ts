@@ -5,9 +5,10 @@ import { SalesModule } from '../sales/sales.module';
 import { ExpensesModule } from '../expenses/expenses.module';
 import { ProductsModule } from '../products/products.module';
 import { CustomersModule } from '../customers/customers.module';
+import { BranchesModule } from '../branches/branches.module';
 
 @Module({
-  imports: [SalesModule, ExpensesModule, ProductsModule, CustomersModule],
+  imports: [SalesModule, ExpensesModule, ProductsModule, CustomersModule, BranchesModule],
   controllers: [DashboardController],
   providers: [DashboardService],
 })

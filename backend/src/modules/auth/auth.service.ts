@@ -3,7 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { JwtService } from '@nestjs/jwt';
 import { Repository, DataSource } from 'typeorm';
 import * as bcrypt from 'bcrypt';
-import { User, Business } from '../../entities';
+import { User, Business, Branch, Role } from '../../entities';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 
@@ -31,12 +31,14 @@ export class AuthService {
           phone: dto.phone,
         }),
       );
+      await manager.save(manager.create(Branch, { businessId: business.id, name: 'Main Branch', isDefault: true }));
       const user = await manager.save(
         manager.create(User, {
           email: dto.email,
           passwordHash,
           name: dto.ownerName,
           businessId: business.id,
+          role: Role.OWNER,
           // DTO validation already requires this to be exactly `true`, so
           // this timestamp is an honest record of when that confirmation
           // actually happened, not just a UI gate.
@@ -65,7 +67,7 @@ export class AuthService {
     const accessToken = this.jwtService.sign({ sub: user.id, businessId: user.businessId });
     return {
       accessToken,
-      user: { id: user.id, email: user.email, name: user.name },
+      user: { id: user.id, email: user.email, name: user.name, role: user.role, branchId: user.branchId ?? null },
       business: { id: business.id, name: business.name },
     };
   }

@@ -1,31 +1,25 @@
 import { Controller, Get, Query, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
-import { ActiveBranchId, CurrentBusinessId } from '../../common/current-business.decorator';
 import { RolesGuard } from '../../common/roles.guard';
 import { Roles } from '../../common/roles.decorator';
 import { Role } from '../../entities';
+import { ActiveBranchId, CurrentBusinessId } from '../../common/current-business.decorator';
 import { BranchContextGuard } from '../branches/branch-context.guard';
+import { AnalyticsService } from './analytics.service';
 
-import { DashboardService } from './dashboard.service';
-
-@Controller('dashboard')
+@Controller('analytics')
 @UseGuards(JwtAuthGuard, RolesGuard, BranchContextGuard)
 @Roles(Role.OWNER)
-export class DashboardController {
-  constructor(private readonly dashboardService: DashboardService) {}
+export class AnalyticsController {
+  constructor(private readonly analyticsService: AnalyticsService) {}
 
-  @Get('summary')
-  getSummary(
+  @Get()
+  get(
     @CurrentBusinessId() businessId: string,
     @Query('from') from?: string,
     @Query('to') to?: string,
     @ActiveBranchId() branchId?: string,
   ) {
-    return this.dashboardService.getSummary(
-      businessId,
-      from ? new Date(from) : undefined,
-      to ? new Date(to) : undefined,
-      branchId,
-    );
+    return this.analyticsService.getAnalytics(businessId, from, to, branchId);
   }
 }
