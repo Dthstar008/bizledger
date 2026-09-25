@@ -25,7 +25,13 @@
     },
     "plugins": [
       "expo-router",
-      "expo-status-bar"
+      "expo-status-bar",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "BizLedger uses the camera to scan product barcodes when you add stock or make a sale."
+        }
+      ]
     ],
     "extra": {
       "router": {},

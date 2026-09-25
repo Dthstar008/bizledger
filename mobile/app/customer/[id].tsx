@@ -8,6 +8,8 @@ import { addRepayment, getCustomer } from '../../src/api/customers';
 import { apiErrorMessage } from '../../src/api/client';
 import { CustomerDetail, TransactionChannel } from '../../src/api/types';
 import { formatNaira } from '../../src/utils/currency';
+import { useAuthStore } from '../../src/store/auth-store';
+import { buildDebtReminderText, openWhatsApp } from '../../src/utils/whatsapp';
 import { colors, radius, spacing } from '../../src/theme';
 import { useFocusLoad } from '../../src/hooks/useFocusLoad';
 
@@ -22,6 +24,7 @@ const REPAYMENT_CHANNELS: { value: TransactionChannel; label: string }[] = [
 
 export default function CustomerDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
+  const businessName = useAuthStore((s) => s.business?.name ?? 'Your business');
   const [customer, setCustomer] = useState<CustomerDetail | null>(null);
   const [loading, setLoading] = useState(false);
   const [repaymentAmount, setRepaymentAmount] = useState('');
@@ -75,6 +78,19 @@ export default function CustomerDetailScreen() {
         <Text style={styles.balanceLabel}>Outstanding</Text>
         <Text style={styles.balanceValue}>{formatNaira(customer.outstandingBalance)}</Text>
       </View>
+
+      {customer.outstandingBalance > 0 && (
+        <Button
+          label="Send debt reminder on WhatsApp"
+          variant="secondary"
+          onPress={() =>
+            openWhatsApp(
+              buildDebtReminderText(businessName, customer.name, customer.outstandingBalance),
+              customer.phone,
+            )
+          }
+        />
+      )}
 
       {customer.outstandingBalance > 0 && (
         <View style={styles.form}>

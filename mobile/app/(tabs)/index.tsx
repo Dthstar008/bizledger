@@ -3,6 +3,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { router } from 'expo-router';
 import { ScreenContainer } from '../../src/components/ScreenContainer';
 import { StatCard } from '../../src/components/StatCard';
+import { Button } from '../../src/components/Button';
 import { getDashboardSummary } from '../../src/api/dashboard';
 import { apiErrorMessage } from '../../src/api/client';
 import { DashboardSummary } from '../../src/api/types';
@@ -14,6 +15,9 @@ import { useFocusLoad } from '../../src/hooks/useFocusLoad';
 export default function DashboardScreen() {
   const business = useAuthStore((s) => s.business);
   const logout = useAuthStore((s) => s.logout);
+  const branches = useAuthStore((s) => s.branches);
+  const activeBranchId = useAuthStore((s) => s.activeBranchId);
+  const setActiveBranch = useAuthStore((s) => s.setActiveBranch);
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -29,7 +33,8 @@ export default function DashboardScreen() {
     } finally {
       setLoading(false);
     }
-  }, []);
+    // Re-run when the owner switches branch: the API filters by the X-Branch-Id header.
+  }, [activeBranchId]);
 
   useFocusLoad(load);
 
@@ -38,7 +43,9 @@ export default function DashboardScreen() {
       <View style={styles.headerRow}>
         <View>
           <Text style={styles.greeting}>{business?.name ?? 'Your business'}</Text>
-          <Text style={styles.subtitle}>This month</Text>
+          <Text style={styles.subtitle}>
+            This month · {branches.find((b) => b.id === activeBranchId)?.name ?? 'All branches'}
+          </Text>
         </View>
         <Pressable
           onPress={() => {
@@ -49,6 +56,29 @@ export default function DashboardScreen() {
           <Text style={styles.logout}>Log out</Text>
         </Pressable>
       </View>
+
+      <View style={styles.actionRow}>
+        <View style={styles.actionButton}>
+          <Button label="Analytics" variant="secondary" onPress={() => router.push('/analytics')} />
+        </View>
+        <View style={styles.actionButton}>
+          <Button label="Team & branches" variant="secondary" onPress={() => router.push('/team')} />
+        </View>
+      </View>
+
+      {branches.length > 1 && (
+        <View style={styles.chipRow}>
+          {[{ id: null, name: 'All branches' }, ...branches].map((b) => (
+            <Pressable
+              key={b.id ?? 'all'}
+              onPress={() => setActiveBranch(b.id)}
+              style={[styles.chip, activeBranchId === b.id && styles.chipActive]}
+            >
+              <Text style={[styles.chipText, activeBranchId === b.id && styles.chipTextActive]}>{b.name}</Text>
+            </Pressable>
+          ))}
+        </View>
+      )}
 
       {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
@@ -122,6 +152,38 @@ const styles = StyleSheet.create({
   },
   errorText: {
     color: colors.danger,
+  },
+  actionRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  actionButton: {
+    flex: 1,
+  },
+  chipRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+  },
+  chip: {
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+  },
+  chipActive: {
+    backgroundColor: colors.primaryMuted,
+    borderColor: colors.primary,
+  },
+  chipText: {
+    color: colors.text,
+    fontSize: 13,
+  },
+  chipTextActive: {
+    color: colors.primary,
+    fontWeight: '700',
   },
   grid: {
     flexDirection: 'row',

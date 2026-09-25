@@ -18,6 +18,8 @@ export default function RootLayout() {
             name="customer/[id]"
             options={{ headerShown: true, title: 'Customer' }}
           />
+          <Stack.Screen name="team" options={{ headerShown: true, title: 'Team & branches' }} />
+          <Stack.Screen name="analytics" options={{ headerShown: true, title: 'Analytics' }} />
         </Stack>
       </SafeAreaProvider>
     </GestureHandlerRootView>

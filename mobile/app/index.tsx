@@ -1,10 +1,11 @@
 import { ActivityIndicator, View } from 'react-native';
 import { Redirect } from 'expo-router';
-import { useAuthStore } from '../src/store/auth-store';
+import { selectIsOwner, useAuthStore } from '../src/store/auth-store';
 import { colors } from '../src/theme';
 
 export default function Index() {
   const token = useAuthStore((s) => s.token);
+  const isOwner = useAuthStore(selectIsOwner);
   const hasHydrated = useAuthStore((s) => s.hasHydrated);
 
   if (!hasHydrated) {
@@ -15,5 +16,7 @@ export default function Index() {
     );
   }
 
-  return <Redirect href={token ? '/(tabs)' : '/login'} />;
+  if (!token) return <Redirect href="/login" />;
+  // Staff have no dashboard, so they land on Sales.
+  return <Redirect href={isOwner ? '/(tabs)' : '/(tabs)/sales'} />;
 }

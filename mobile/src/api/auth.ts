@@ -1,8 +1,9 @@
 import { apiClient } from './client';
+import { Role } from './types';
 
 interface AuthResponse {
   accessToken: string;
-  user: { id: string; email: string; name?: string };
+  user: { id: string; email: string; name?: string; role: Role; branchId: string | null };
   business: { id: string; name: string };
 }
 

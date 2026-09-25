@@ -1,7 +1,7 @@
 import axios from 'axios';
 import Constants from 'expo-constants';
 import { Platform } from 'react-native';
-import { useAuthStore } from '../store/auth-store';
+import { selectIsOwner, useAuthStore } from '../store/auth-store';
 
 // Android emulators need 10.0.2.2 to reach the host machine. iOS simulators
 // and web preview can use localhost. Physical devices still need an explicit
@@ -19,9 +19,13 @@ export const apiClient = axios.create({
 });
 
 apiClient.interceptors.request.use((config) => {
-  const token = useAuthStore.getState().token;
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
+  const state = useAuthStore.getState();
+  if (state.token) {
+    config.headers.Authorization = `Bearer ${state.token}`;
+  }
+  // Owners pick a branch to work in; staff are pinned by the server, which ignores this header for them.
+  if (state.activeBranchId && selectIsOwner(state)) {
+    config.headers['X-Branch-Id'] = state.activeBranchId;
   }
   return config;
 });

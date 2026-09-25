@@ -16,11 +16,15 @@ export type ExpenseCategory =
   | 'maintenance'
   | 'other';
 
+export type Role = 'owner' | 'staff';
+
 export interface Product {
   id: string;
   name: string;
   sku?: string;
-  costPrice: number;
+  barcode?: string | null;
+  /** Absent for staff accounts — the API hides purchase costs from them. */
+  costPrice?: number;
   sellingPrice: number;
   stockQty: number;
   lowStockThreshold: number;
@@ -55,7 +59,7 @@ export interface SaleItem {
   productName: string;
   quantity: number;
   unitPrice: number;
-  unitCostPrice: number;
+  unitCostPrice?: number;
   lineTotal: number;
 }
 
@@ -69,7 +73,7 @@ export interface Sale {
   amountPaid: number;
   creditAmount: number;
   outstandingBalance: number;
-  costTotal: number;
+  costTotal?: number;
   paymentReference?: string;
   verified: boolean;
   confirmedAt?: string;
@@ -97,4 +101,36 @@ export interface DashboardSummary {
   saleCount: number;
   lowStockProducts: Product[];
   insights: string[];
+}
+
+export interface Branch {
+  id: string;
+  name: string;
+  address?: string | null;
+  isDefault: boolean;
+}
+
+export interface Employee {
+  id: string;
+  name?: string;
+  email: string;
+  role: Role;
+  branchId: string | null;
+  createdAt: string;
+}
+
+export interface DailyPoint {
+  day: string;
+  revenue: number;
+  profit: number;
+  saleCount: number;
+}
+
+export interface Analytics {
+  period: { from: string; to: string };
+  totals: { revenue: number; profit: number; saleCount: number; averageSale: number };
+  daily: DailyPoint[];
+  topProducts: { productId: string; name: string; units: number; revenue: number; profit: number }[];
+  topCustomers: { customerId: string; name: string; revenue: number; saleCount: number }[];
+  paymentMix: { method: PaymentMethod; revenue: number; saleCount: number }[];
 }

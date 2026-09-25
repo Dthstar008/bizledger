@@ -4,7 +4,10 @@ import { router } from 'expo-router';
 import { ScreenContainer } from '../../src/components/ScreenContainer';
 import { Button } from '../../src/components/Button';
 import { TextField } from '../../src/components/TextField';
-import { listProducts } from '../../src/api/products';
+import { BarcodeScanner } from '../../src/components/BarcodeScanner';
+import { useAuthStore } from '../../src/store/auth-store';
+import { buildReceiptText, openWhatsApp } from '../../src/utils/whatsapp';
+import { findProductByBarcode, listProducts } from '../../src/api/products';
 import { listCustomers } from '../../src/api/customers';
 import { createSale } from '../../src/api/sales';
 import { apiErrorMessage } from '../../src/api/client';
@@ -42,6 +45,8 @@ export default function NewSaleScreen() {
   const [submitting, setSubmitting] = useState(false);
   const [editingProductId, setEditingProductId] = useState<string | null>(null);
   const [priceInput, setPriceInput] = useState('');
+  const [scanning, setScanning] = useState(false);
+  const businessName = useAuthStore((s) => s.business?.name ?? 'Your business');
 
   useEffect(() => {
     listProducts().then(setProducts).catch((err) => Alert.alert('Could not load products', apiErrorMessage(err)));
@@ -96,10 +101,28 @@ export default function NewSaleScreen() {
     (!needsCustomer || !!customerId) &&
     (paidNumber === undefined || (paidNumber >= 0 && paidNumber <= total));
 
+  async function handleScan(code: string) {
+    setScanning(false);
+    try {
+      const product = products.find((p) => p.barcode === code) ?? (await findProductByBarcode(code));
+      if (!product) {
+        Alert.alert('Product not found', `No product is registered with barcode ${code}. Add it in Inventory first.`);
+        return;
+      }
+      if (product.stockQty < 1) {
+        Alert.alert('Out of stock', `${product.name} has no stock left.`);
+        return;
+      }
+      addToCart(product);
+    } catch (err) {
+      Alert.alert('Could not look up barcode', apiErrorMessage(err));
+    }
+  }
+
   async function handleSubmit() {
     setSubmitting(true);
     try {
-      await createSale({
+      const sale = await createSale({
         items: cart.map((l) => ({ productId: l.productId, quantity: l.quantity, unitPrice: l.unitPrice })),
         paymentMethod,
         customerId,
@@ -107,7 +130,17 @@ export default function NewSaleScreen() {
         paymentReference: paymentReference.trim() || undefined,
         channel: paymentMethod === 'transfer' ? channel : undefined,
       });
-      router.back();
+      const customerPhone = customers.find((c) => c.id === customerId)?.phone;
+      Alert.alert('Sale recorded', `${formatNaira(sale.totalAmount)} — would you like to send the customer a receipt?`, [
+        { text: 'Done', style: 'cancel', onPress: () => router.back() },
+        {
+          text: 'Send on WhatsApp',
+          onPress: async () => {
+            await openWhatsApp(buildReceiptText(businessName, sale), customerPhone);
+            router.back();
+          },
+        },
+      ]);
     } catch (err) {
       Alert.alert('Could not record sale', apiErrorMessage(err));
     } finally {
@@ -119,6 +152,8 @@ export default function NewSaleScreen() {
     <ScreenContainer>
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Add products</Text>
+        <Button label="Scan barcode" variant="secondary" onPress={() => setScanning(true)} />
+        <BarcodeScanner visible={scanning} onClose={() => setScanning(false)} onScanned={handleScan} />
         <View style={styles.chipRow}>
           {products.map((p) => (
             <Pressable

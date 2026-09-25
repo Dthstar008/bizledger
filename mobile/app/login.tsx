@@ -20,7 +20,7 @@ export default function LoginScreen() {
     try {
       const res = await login({ email: email.trim(), password });
       setAuth({ token: res.accessToken, business: res.business, user: res.user });
-      router.replace('/(tabs)');
+      router.replace(res.user.role === 'staff' ? '/(tabs)/sales' : '/(tabs)');
     } catch (err) {
       Alert.alert('Could not sign in', apiErrorMessage(err));
     } finally {

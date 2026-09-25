@@ -1,6 +1,9 @@
+import { useEffect } from 'react';
 import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../../src/theme';
+import { selectIsOwner, useAuthStore } from '../../src/store/auth-store';
+import { listBranches } from '../../src/api/branches';
 
 type IoniconName = keyof typeof Ionicons.glyphMap;
 
@@ -9,6 +12,20 @@ function TabIcon({ name, focused }: { name: IoniconName; focused: boolean }) {
 }
 
 export default function TabsLayout() {
+  const isOwner = useAuthStore(selectIsOwner);
+  const token = useAuthStore((s) => s.token);
+  const setBranches = useAuthStore((s) => s.setBranches);
+
+  // Branch list feeds the owner's switcher and the staff branch label.
+  useEffect(() => {
+    if (!token) return;
+    listBranches()
+      .then(setBranches)
+      .catch(() => {
+        // Non-fatal: the app still works against the default branch.
+      });
+  }, [token, setBranches]);
+
   return (
     <Tabs
       screenOptions={{
@@ -21,6 +38,7 @@ export default function TabsLayout() {
         name="index"
         options={{
           title: 'Dashboard',
+          href: isOwner ? undefined : null,
           tabBarIcon: ({ focused }) => <TabIcon name={focused ? 'home' : 'home-outline'} focused={focused} />,
         }}
       />
@@ -49,6 +67,7 @@ export default function TabsLayout() {
         name="expenses"
         options={{
           title: 'Expenses',
+          href: isOwner ? undefined : null,
           tabBarIcon: ({ focused }) => <TabIcon name={focused ? 'cash' : 'cash-outline'} focused={focused} />,
         }}
       />

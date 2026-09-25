@@ -1,5 +1,7 @@
 import { useCallback, useState } from 'react';
 import { Alert, StyleSheet, Text, View } from 'react-native';
+import { BarcodeScanner } from '../../src/components/BarcodeScanner';
+import { selectIsOwner, useAuthStore } from '../../src/store/auth-store';
 import { ScreenContainer } from '../../src/components/ScreenContainer';
 import { Button } from '../../src/components/Button';
 import { TextField } from '../../src/components/TextField';
@@ -14,6 +16,7 @@ export default function InventoryScreen() {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(false);
   const [showForm, setShowForm] = useState(false);
+  const isOwner = useAuthStore(selectIsOwner);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -32,10 +35,12 @@ export default function InventoryScreen() {
     <ScreenContainer refreshing={loading} onRefresh={load}>
       <View style={styles.headerRow}>
         <Text style={styles.title}>Inventory</Text>
-        <Button label={showForm ? 'Cancel' : 'Add product'} variant="secondary" onPress={() => setShowForm((v) => !v)} />
+        {isOwner && (
+          <Button label={showForm ? 'Cancel' : 'Add product'} variant="secondary" onPress={() => setShowForm((v) => !v)} />
+        )}
       </View>
 
-      {showForm && (
+      {isOwner && showForm && (
         <NewProductForm
           onCreated={() => {
             setShowForm(false);
@@ -56,10 +61,13 @@ export default function InventoryScreen() {
               </Text>
             </View>
             <View style={styles.priceRow}>
-              <Text style={styles.priceLabel}>Cost {formatNaira(p.costPrice)}</Text>
+              {p.costPrice !== undefined && <Text style={styles.priceLabel}>Cost {formatNaira(p.costPrice)}</Text>}
               <Text style={styles.priceLabel}>Sells {formatNaira(p.sellingPrice)}</Text>
-              <Text style={styles.priceLabel}>Value {formatNaira(p.costPrice * p.stockQty)}</Text>
+              {p.costPrice !== undefined && (
+                <Text style={styles.priceLabel}>Value {formatNaira(p.costPrice * p.stockQty)}</Text>
+              )}
             </View>
+            {p.barcode ? <Text style={styles.barcodeText}>Barcode {p.barcode}</Text> : null}
           </View>
         ))
       )}
@@ -72,6 +80,8 @@ function NewProductForm({ onCreated }: { onCreated: () => void }) {
   const [costPrice, setCostPrice] = useState('');
   const [sellingPrice, setSellingPrice] = useState('');
   const [stockQty, setStockQty] = useState('');
+  const [barcode, setBarcode] = useState('');
+  const [scanning, setScanning] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   const canSubmit = name.trim() && costPrice && sellingPrice && stockQty;
@@ -84,6 +94,7 @@ function NewProductForm({ onCreated }: { onCreated: () => void }) {
         costPrice: parseFloat(costPrice),
         sellingPrice: parseFloat(sellingPrice),
         stockQty: parseInt(stockQty, 10),
+        barcode: barcode.trim() || undefined,
       });
       onCreated();
     } catch (err) {
@@ -99,6 +110,16 @@ function NewProductForm({ onCreated }: { onCreated: () => void }) {
       <TextField label="Cost price (₦)" value={costPrice} onChangeText={setCostPrice} keyboardType="numeric" placeholder="6000" />
       <TextField label="Selling price (₦)" value={sellingPrice} onChangeText={setSellingPrice} keyboardType="numeric" placeholder="9000" />
       <TextField label="Starting stock" value={stockQty} onChangeText={setStockQty} keyboardType="numeric" placeholder="20" />
+      <TextField label="Barcode (optional)" value={barcode} onChangeText={setBarcode} keyboardType="numeric" placeholder="Scan or type" />
+      <Button label="Scan barcode" variant="secondary" onPress={() => setScanning(true)} />
+      <BarcodeScanner
+        visible={scanning}
+        onClose={() => setScanning(false)}
+        onScanned={(code) => {
+          setBarcode(code);
+          setScanning(false);
+        }}
+      />
       <Button label="Save product" onPress={handleSubmit} loading={submitting} disabled={!canSubmit} />
     </View>
   );
@@ -122,6 +143,10 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     padding: spacing.md,
     gap: spacing.sm,
+  },
+  barcodeText: {
+    color: colors.textMuted,
+    fontSize: 12,
   },
   empty: {
     color: colors.textMuted,
