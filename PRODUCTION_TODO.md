@@ -81,10 +81,29 @@ Roughly in priority order. Status as of 2026-09-25:
 - The camera permission text is in `mobile/app.json`; store listings will need
   a matching privacy-policy disclosure (item 1).
 
-## Reviewed against an Instagram reel's legal-exposure checklist (2026-09-21)
+## Security review (2026-09-28)
 
-A reel (@adilet.fndr, "Your vibe-coded app can get sued for $100,000 before
-it makes a single sale") listed six specific US statutory-damages traps for
+Checked dependencies (`npm audit`), authentication, authorization/IDOR,
+injection risk in every raw SQL query, secrets handling, and mobile-specific
+storage. No committed secrets, no SQL injection (every raw query — sale
+stock updates, analytics — uses parameterized placeholders, never string-
+concatenated values), and no cross-business data access: every lookup,
+including repayments and employee removal, is scoped by `businessId` from
+the JWT, never from client input.
+
+| # | Finding | Status |
+|---|---|---|
+| 1 | No rate limiting on `/auth/login` or `/auth/register` — open to credential stuffing/brute force | ⚠️ Same as item 18 above, not yet implemented |
+| 2 | Weak password policy — `MinLength(6)`, no complexity requirement, on both registration and staff account creation | ⚠️ Not implemented |
+| 3 | JWT stored in plain `AsyncStorage` on the phone, not the OS keychain (`expo-secure-store`) — readable on a rooted/compromised device, sandboxed like any other app data on a normal one | ⚠️ Not implemented |
+| 4 | No security response headers (`helmet`) | ⚠️ Not implemented — low impact for a JSON API with no browser rendering |
+| 5 | RLS has no policies (see README) — closes Supabase's default public REST exposure, but tenant isolation is enforced entirely in application code, not the database, since the backend connects as the table owner | ➖ Accepted trade-off, already documented |
+| 6 | `npm audit`: 14 backend / 13 mobile advisories, all in build-time tooling (`bcrypt`'s native installer via `node-pre-gyp`/`tar`, `uuid` via TypeORM, Expo's CLI chain) — none of it ships in the running app or is reachable by a user request | ➖ Not urgent |
+| 7 | The Render database password was pasted into this chat's history on 2026-09-25 (not committed to the repo) | ⚠️ Rotate it in Render after the hackathon |
+
+## Reviewed against legal-exposure checklist
+
+A checklist listed six specific statutory-damages traps for
 web SaaS apps. Checked each against this actual codebase (grepped for the
 relevant code, didn't assume):
 
@@ -102,19 +121,14 @@ billing, session-replay analytics, user-uploaded images) this app simply
 doesn't have yet, so they're not fixable — there's nothing to fix. The one
 that was real (no age gate) is fixed. The other 5 are now written down as
 "come back to this when X ships" rather than silently forgotten, which is
-the actual point of the reel even where its specific examples didn't apply
+the actual point even where its specific examples didn't apply
 here. The underlying theme — undisclosed compliance debt accumulating
 silently — is exactly what items 1, 2, and 8 above (privacy policy, terms,
 NDPA review) already exist to catch for this specific app.
 
-## Reviewed against a second reel's "looks vibecoded" checklist (2026-09-21)
+## Reviewed against a second checklist
 
-A second reel (@aj.on.ai, "30 reasons your site looks vibecoded") lists 30
-visual/design tells of a generic AI-generated marketing site — gradients,
-icon libraries, pricing tiers, bento grids, fake testimonials, hover
-animations, specific fonts. Checked each against the actual mobile app
-(grepped for the relevant code):
-
+A second checklist lists 30 visual/design tells of a generic AI-generated marketing site — gradients, icon libraries, pricing tiers, bento grids, fake testimonials, hover animations, specific fonts. Checked each against the actual mobile app (grepped for the relevant code):
 | Claim | Checked | Result |
 |---|---|---|
 | Emojis (#7) | Tab bar icons in `mobile/app/(tabs)/_layout.tsx` | ⚠️ **Real hit — fixed.** All five tab icons (🏠🧾📦👥💸) were literal emoji characters — the exact low-effort placeholder pattern this flags. Swapped for `@expo/vector-icons` (Ionicons, ships with Expo — no new dependency to speak of), filled when active/outline when inactive, matching the existing active/inactive tint colors. Verified: type-checks, and the app bundles clean with the new icon font. |
