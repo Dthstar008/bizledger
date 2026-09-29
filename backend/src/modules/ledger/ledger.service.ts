@@ -2,6 +2,23 @@ import { Injectable } from '@nestjs/common';
 import { EntityManager, Repository } from 'typeorm';
 import { InjectRepository } from '@nestjs/typeorm';
 import { LedgerEvent, LedgerEventType } from '../../entities';
+import { LedgerEntity } from './dto/ledger-query.dto';
+
+export interface LedgerListOptions {
+  limit?: number;
+  entity?: LedgerEntity;
+  entityId?: string;
+  types?: LedgerEventType[];
+  before?: Date;
+}
+
+// Which metadata key identifies each kind of entity on an event.
+const ENTITY_KEY: Record<LedgerEntity, string> = {
+  product: 'productId',
+  customer: 'customerId',
+  expense: 'expenseId',
+  sale: 'saleId',
+};
 
 @Injectable()
 export class LedgerService {
@@ -43,11 +60,40 @@ export class LedgerService {
     await repo.insert(events as any);
   }
 
-  async listForBusiness(businessId: string, limit = 100): Promise<LedgerEvent[]> {
-    return this.events.find({
-      where: { businessId },
-      order: { createdAt: 'DESC' },
-      take: limit,
-    });
+  /**
+   * Newest-first event history, optionally narrowed to one entity (a
+   * product's stock history, a customer's activity...) and/or event types.
+   * Page with `before` = the last event's createdAt.
+   */
+  async listForBusiness(businessId: string, opts: LedgerListOptions = {}): Promise<LedgerEvent[]> {
+    const qb = this.events
+      .createQueryBuilder('e')
+      .where('e.businessId = :businessId', { businessId })
+      .orderBy('e.createdAt', 'DESC')
+      .addOrderBy('e.id', 'DESC')
+      .take(Math.min(opts.limit ?? 50, 200));
+
+    if (opts.entity && opts.entityId) {
+      const key = ENTITY_KEY[opts.entity];
+      if (opts.entity === 'customer') {
+        // Older sale events don't carry customerId, so also match events for
+        // any of this customer's sales.
+        qb.andWhere(
+          `(e.metadata->>'customerId' = :entityId OR e.metadata->>'saleId' IN (
+             SELECT s.id::text FROM sales s WHERE s."customerId" = CAST(:entityId AS uuid) AND s."businessId" = :businessId))`,
+          { entityId: opts.entityId },
+        );
+      } else {
+        // `key` comes from a fixed lookup table, never from the request.
+        qb.andWhere(`e.metadata->>'${key}' = :entityId`, { entityId: opts.entityId });
+      }
+    }
+    if (opts.types && opts.types.length > 0) {
+      qb.andWhere('e.type IN (:...types)', { types: opts.types });
+    }
+    if (opts.before) {
+      qb.andWhere('e.createdAt < :before', { before: opts.before });
+    }
+    return qb.getMany();
   }
 }

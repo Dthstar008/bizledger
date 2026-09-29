@@ -1,4 +1,4 @@
-import { IsEnum, IsNumber, IsOptional, Min } from 'class-validator';
+import { IsEnum, IsNumber, IsOptional, IsString, MaxLength, Min } from 'class-validator';
 import { ExpenseCategory } from '../../../entities';
 
 export class CreateExpenseDto {
@@ -10,5 +10,7 @@ export class CreateExpenseDto {
   amount: number;
 
   @IsOptional()
+  @IsString()
+  @MaxLength(200)
   description?: string;
 }

@@ -36,6 +36,10 @@ export class Product {
   @Column('int', { default: 0 })
   lowStockThreshold: number;
 
+  /** Set when a photo is stored in product_images; also a cache-buster for clients. Null = no photo. */
+  @Column({ type: 'timestamptz', nullable: true })
+  imageUpdatedAt?: Date | null;
+
   @CreateDateColumn()
   createdAt: Date;
 

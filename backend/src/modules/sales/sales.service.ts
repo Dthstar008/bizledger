@@ -16,6 +16,7 @@ import {
 import { CreateSaleDto } from './dto/create-sale.dto';
 import { LedgerService } from '../ledger/ledger.service';
 import { withConnectionRetry } from '../../common/retry';
+import { Actor, actorMeta } from '../../common/current-business.decorator';
 
 /**
  * Derives payment_status from how much of the sale's total is still
@@ -65,11 +66,12 @@ export class SalesService {
    * each round trip holds a connection out of the pool for its full
    * network latency, and that's the resource that runs out first at scale.
    */
-  async create(businessId: string, dto: CreateSaleDto, branchId?: string): Promise<Sale> {
-    return withConnectionRetry(() => this.createInner(businessId, dto, branchId));
+  async create(businessId: string, dto: CreateSaleDto, branchId?: string, actor?: Actor): Promise<Sale> {
+    return withConnectionRetry(() => this.createInner(businessId, dto, branchId, actor));
   }
 
-  private async createInner(businessId: string, dto: CreateSaleDto, branchId?: string): Promise<Sale> {
+  private async createInner(businessId: string, dto: CreateSaleDto, branchId?: string, actor?: Actor): Promise<Sale> {
+    const who = actorMeta(actor);
     return this.dataSource.transaction(async (manager) => {
       const productRepo = manager.getRepository(Product);
       const saleRepo = manager.getRepository(Sale);
@@ -195,7 +197,14 @@ export class SalesService {
         ledgerEvents.push({
           businessId,
           type: LedgerEventType.INVENTORY_DECREASED,
-          metadata: { productId, name: product.name, quantity: qty, remainingStock: remainingStockByProductId.get(productId) },
+          metadata: {
+            productId,
+            name: product.name,
+            quantity: qty,
+            remainingStock: remainingStockByProductId.get(productId),
+            saleId: sale.id,
+            ...who,
+          },
         });
       }
 
@@ -203,7 +212,14 @@ export class SalesService {
         businessId,
         type: LedgerEventType.SALE_CREATED,
         amount: totalAmount,
-        metadata: { saleId: sale.id, itemCount: itemRows.length, paymentStatus: sale.paymentStatus, verified },
+        metadata: {
+          saleId: sale.id,
+          itemCount: itemRows.length,
+          paymentStatus: sale.paymentStatus,
+          verified,
+          customerId: dto.customerId ?? null,
+          ...who,
+        },
       });
 
       if (amountPaid > 0) {
@@ -211,7 +227,7 @@ export class SalesService {
           businessId,
           type: LedgerEventType.PAYMENT_RECEIVED,
           amount: amountPaid,
-          metadata: { saleId: sale.id, method: dto.paymentMethod },
+          metadata: { saleId: sale.id, method: dto.paymentMethod, customerId: dto.customerId ?? null, ...who },
         });
       }
 
@@ -220,7 +236,7 @@ export class SalesService {
           businessId,
           type: LedgerEventType.CUSTOMER_CREDIT_CREATED,
           amount: creditAmount,
-          metadata: { saleId: sale.id, customerId: dto.customerId },
+          metadata: { saleId: sale.id, customerId: dto.customerId, ...who },
         });
       }
 

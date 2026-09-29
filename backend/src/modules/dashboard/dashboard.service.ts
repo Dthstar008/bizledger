@@ -25,7 +25,7 @@ export class DashboardService {
     const previousPeriodEnd = new Date(periodStart.getTime() - 1);
     const previousPeriodStart = new Date(previousPeriodEnd.getTime() - periodLengthMs);
 
-    const [current, previous, expenses, previousExpenses, inventoryValue, lowStock, outstandingDebt] =
+    const [current, previous, expenses, previousExpenses, inventoryValue, lowStock, outstandingDebt, customerCount] =
       await Promise.all([
         this.salesService.summarizeForPeriod(businessId, periodStart, now, branchId),
         this.salesService.summarizeForPeriod(businessId, previousPeriodStart, previousPeriodEnd, branchId),
@@ -34,6 +34,7 @@ export class DashboardService {
         this.productsService.totalStockValue(businessId),
         this.productsService.lowStock(businessId),
         this.customersService.totalOutstandingDebt(businessId),
+        this.customersService.count(businessId),
       ]);
 
     const netProfit = current.grossProfit - expenses;
@@ -66,6 +67,7 @@ export class DashboardService {
       inventoryValue,
       outstandingCustomerDebt: outstandingDebt,
       saleCount: current.saleCount,
+      customerCount,
       lowStockProducts: lowStock,
       insights,
     };

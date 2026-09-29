@@ -1,6 +1,6 @@
 import { Body, Controller, Get, Param, Post, UseGuards, UseInterceptors } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
-import { ActiveBranchId, CurrentBusinessId, WriteBranchId } from '../../common/current-business.decorator';
+import { ActiveBranchId, Actor, CurrentActor, CurrentBusinessId, WriteBranchId } from '../../common/current-business.decorator';
 import { RolesGuard } from '../../common/roles.guard';
 import { RedactCostsInterceptor } from '../../common/redact-costs.interceptor';
 import { BranchContextGuard } from '../branches/branch-context.guard';
@@ -18,9 +18,10 @@ export class SalesController {
   create(
     @CurrentBusinessId() businessId: string,
     @WriteBranchId() branchId: string | undefined,
+    @CurrentActor() actor: Actor,
     @Body() dto: CreateSaleDto,
   ) {
-    return this.salesService.create(businessId, dto, branchId);
+    return this.salesService.create(businessId, dto, branchId, actor);
   }
 
   @Get()

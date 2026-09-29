@@ -5,7 +5,7 @@ import { Roles } from '../../common/roles.decorator';
 import { Role } from '../../entities';
 import { ActiveBranchId, CurrentBusinessId } from '../../common/current-business.decorator';
 import { BranchContextGuard } from '../branches/branch-context.guard';
-import { AnalyticsService } from './analytics.service';
+import { AnalyticsService, Granularity } from './analytics.service';
 
 @Controller('analytics')
 @UseGuards(JwtAuthGuard, RolesGuard, BranchContextGuard)
@@ -18,8 +18,9 @@ export class AnalyticsController {
     @CurrentBusinessId() businessId: string,
     @Query('from') from?: string,
     @Query('to') to?: string,
+    @Query('granularity') granularity?: Granularity,
     @ActiveBranchId() branchId?: string,
   ) {
-    return this.analyticsService.getAnalytics(businessId, from, to, branchId);
+    return this.analyticsService.getAnalytics(businessId, from, to, branchId, granularity ?? 'day');
   }
 }

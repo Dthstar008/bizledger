@@ -1,4 +1,4 @@
-import { CallHandler, ExecutionContext, Injectable, NestInterceptor } from '@nestjs/common';
+import { CallHandler, ExecutionContext, Injectable, NestInterceptor, StreamableFile } from '@nestjs/common';
 import { Observable, map } from 'rxjs';
 import { Role } from '../entities/user.entity';
 
@@ -7,7 +7,8 @@ const COST_KEYS = new Set(['costPrice', 'costTotal', 'unitCostPrice']);
 /** Recursively removes purchase-cost fields so staff can sell without seeing margins. */
 export function redactCosts<T>(value: T): T {
   if (Array.isArray(value)) return value.map((v) => redactCosts(v)) as unknown as T;
-  if (value instanceof Date) return value;
+  // Binary responses (product photos) pass through untouched.
+  if (value instanceof Date || value instanceof StreamableFile || Buffer.isBuffer(value)) return value;
   if (value && typeof value === 'object') {
     const out: Record<string, unknown> = {};
     for (const [key, v] of Object.entries(value as Record<string, unknown>)) {
