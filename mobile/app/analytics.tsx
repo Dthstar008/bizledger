@@ -1,207 +1,213 @@
-import { useCallback, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { ScreenContainer } from '../src/components/ScreenContainer';
-import { StatCard } from '../src/components/StatCard';
+import { useState } from 'react';
+import { StyleSheet, View } from 'react-native';
+import { router } from 'expo-router';
+import { Screen } from '../src/components/Screen';
+import { ChipGroup } from '../src/components/Chip';
+import { BranchSwitcher, useActiveBranchName } from '../src/components/BranchSwitcher';
+import { Section } from '../src/components/Card';
+import { StatCard, StatGrid } from '../src/components/StatCard';
+import { AppText } from '../src/components/AppText';
+import { ListRow } from '../src/components/ListRow';
+import { Badge } from '../src/components/Badge';
+import { BarList, TrendChart } from '../src/components/Charts';
+import { ErrorState, InlineError, Skeleton, SkeletonStats } from '../src/components/Feedback';
 import { getAnalytics } from '../src/api/analytics';
-import { apiErrorMessage } from '../src/api/client';
-import { Analytics, PaymentMethod } from '../src/api/types';
+import { Analytics, Granularity, PaymentMethod } from '../src/api/types';
+import { useResource } from '../src/hooks/useResource';
 import { formatNaira } from '../src/utils/currency';
-import { useAuthStore } from '../src/store/auth-store';
-import { colors, radius, spacing } from '../src/theme';
-import { useFocusLoad } from '../src/hooks/useFocusLoad';
+import { capitalise } from '../src/utils/format';
+import { spacing } from '../src/theme';
 
-type Period = '7d' | '30d' | 'month';
+type Period = '7d' | '30d' | '90d' | '12m';
 
-const PERIODS: { key: Period; label: string }[] = [
-  { key: '7d', label: 'Last 7 days' },
-  { key: '30d', label: 'Last 30 days' },
-  { key: 'month', label: 'This month' },
+const PERIODS: { value: Period; label: string; days: number; granularity: Granularity; unit: string }[] = [
+  { value: '7d', label: '7 days', days: 7, granularity: 'day', unit: 'Daily' },
+  { value: '30d', label: '30 days', days: 30, granularity: 'day', unit: 'Daily' },
+  { value: '90d', label: '3 months', days: 90, granularity: 'week', unit: 'Weekly' },
+  { value: '12m', label: '12 months', days: 365, granularity: 'month', unit: 'Monthly' },
 ];
 
-const METHOD_LABEL: Record<PaymentMethod, string> = {
-  cash: 'Cash',
-  transfer: 'Transfer',
-  pos: 'POS',
-  credit: 'Credit',
-};
+const METHOD: Record<PaymentMethod, string> = { cash: 'Cash', transfer: 'Transfer', pos: 'POS', credit: 'Credit' };
 
-function rangeFor(period: Period): { from: Date; to: Date } {
-  const to = new Date();
-  if (period === 'month') return { from: new Date(to.getFullYear(), to.getMonth(), 1), to };
-  const days = period === '7d' ? 7 : 30;
-  const from = new Date(to.getTime() - (days - 1) * 24 * 60 * 60 * 1000);
-  from.setHours(0, 0, 0, 0);
-  return { from, to };
+function bucketLabel(bucket: string, g: Granularity): string {
+  const d = new Date(bucket);
+  if (g === 'month') return d.toLocaleDateString('en-NG', { month: 'short' });
+  return d.toLocaleDateString('en-NG', { day: 'numeric', month: 'short' });
 }
 
-function shortDay(day: string) {
-  const [, m, d] = day.split('-');
-  return `${parseInt(d, 10)}/${parseInt(m, 10)}`;
+function Metric({ label, value }: { label: string; value: string }) {
+  return (
+    <View style={styles.metric}>
+      <AppText variant="metric">{value}</AppText>
+      <AppText variant="caption" tone="muted">
+        {label}
+      </AppText>
+    </View>
+  );
 }
 
 export default function AnalyticsScreen() {
-  const activeBranchId = useAuthStore((s) => s.activeBranchId);
-  const branches = useAuthStore((s) => s.branches);
   const [period, setPeriod] = useState<Period>('30d');
-  const [data, setData] = useState<Analytics | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const branchName = useActiveBranchName();
+  const p = PERIODS.find((x) => x.value === period)!;
+  const { data, error, loading, refreshing, reload, retry } = useResource<Analytics>(
+    () => {
+      const to = new Date();
+      const from = new Date(to.getTime() - (p.days - 1) * 86400000);
+      from.setHours(0, 0, 0, 0);
+      return getAnalytics({ from, to, granularity: p.granularity });
+    },
+    ['sale.completed', 'payment.received', 'expense.changed', 'stock.adjusted', 'branch.selected'],
+    [period],
+  );
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      setData(await getAnalytics(rangeFor(period)));
-    } catch (err) {
-      setError(apiErrorMessage(err));
-    } finally {
-      setLoading(false);
-    }
-    // Reload on period or branch change (branch travels in the X-Branch-Id header).
-  }, [period, activeBranchId]);
+  const controls = (
+    <>
+      <AppText variant="caption" tone="muted">
+        {branchName}
+      </AppText>
+      <ChipGroup scrollable options={PERIODS.map(({ value, label }) => ({ value, label }))} value={period} onChange={setPeriod} />
+      <BranchSwitcher />
+    </>
+  );
 
-  useFocusLoad(load);
+  if (loading || (!data && !error)) {
+    return (
+      <Screen edges={[]}>
+        {controls}
+        <SkeletonStats count={6} />
+        <Skeleton height={200} />
+      </Screen>
+    );
+  }
+  if (!data) {
+    return (
+      <Screen edges={[]}>
+        {controls}
+        <ErrorState message={error ?? 'Analytics could not be loaded.'} onRetry={retry} />
+      </Screen>
+    );
+  }
 
-  const maxRevenue = data ? Math.max(1, ...data.daily.map((d) => d.revenue)) : 1;
-  const totalMix = data ? Math.max(1, data.paymentMix.reduce((sum, m) => sum + m.revenue, 0)) : 1;
-  const branchLabel = branches.find((b) => b.id === activeBranchId)?.name ?? 'All branches';
+  const a = data;
+  const noSales = a.totals.saleCount === 0;
+  const trend = a.series.map((s) => ({ label: bucketLabel(s.bucket, a.granularity), value: s.revenue, secondary: s.expenses }));
 
   return (
-    <ScreenContainer refreshing={loading} onRefresh={load}>
-      <Text style={styles.subtitle}>{branchLabel}</Text>
-      <View style={styles.chipRow}>
-        {PERIODS.map((p) => (
-          <Pressable
-            key={p.key}
-            onPress={() => setPeriod(p.key)}
-            style={[styles.chip, period === p.key && styles.chipActive]}
-          >
-            <Text style={[styles.chipText, period === p.key && styles.chipTextActive]}>{p.label}</Text>
-          </Pressable>
-        ))}
-      </View>
+    <Screen edges={[]} refreshing={refreshing} onRefresh={reload}>
+      {controls}
+      {error ? <InlineError message={error} onRetry={reload} /> : null}
 
-      {error ? <Text style={styles.errorText}>{error}</Text> : null}
+      <StatGrid>
+        <StatCard label="Revenue" value={formatNaira(a.totals.revenue)} icon="trending-up-outline" />
+        <StatCard label="Gross profit" value={formatNaira(a.totals.profit)} tone="positive" icon="stats-chart-outline" />
+        <StatCard label="Expenses" value={formatNaira(a.expenses.total)} tone="negative" icon="wallet-outline" />
+        <StatCard label="Net profit" value={formatNaira(a.netProfit)} tone={a.netProfit >= 0 ? 'positive' : 'negative'} icon="ribbon-outline" />
+        <StatCard label="Sales" value={String(a.totals.saleCount)} icon="receipt-outline" />
+        <StatCard label="Average sale" value={formatNaira(a.totals.averageSale)} icon="calculator-outline" />
+      </StatGrid>
 
-      {data ? (
-        <>
-          <View style={styles.grid}>
-            <StatCard label="Revenue" value={formatNaira(data.totals.revenue)} />
-            <StatCard label="Gross profit" value={formatNaira(data.totals.profit)} tone="positive" />
-            <StatCard label="Sales" value={String(data.totals.saleCount)} />
-            <StatCard label="Average sale" value={formatNaira(data.totals.averageSale)} />
-          </View>
+      <Section title="Sales overview" description={`${p.unit} revenue, with expenses as a line`}>
+        {noSales && a.expenses.total === 0 ? (
+          <AppText tone="muted">No sales or expenses in this period.</AppText>
+        ) : (
+          <TrendChart data={trend} primaryLabel="Revenue" secondaryLabel="Expenses" />
+        )}
+      </Section>
 
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Daily sales</Text>
-            {data.totals.saleCount === 0 ? (
-              <Text style={styles.muted}>No sales in this period.</Text>
-            ) : (
-              <>
-                <View style={styles.chart}>
-                  {data.daily.map((d) => (
-                    <View key={d.day} style={styles.barSlot}>
-                      <View
-                        style={[
-                          styles.bar,
-                          { height: Math.max(d.revenue > 0 ? 3 : 0, (d.revenue / maxRevenue) * 110) },
-                        ]}
-                      />
-                    </View>
-                  ))}
-                </View>
-                <View style={styles.axis}>
-                  <Text style={styles.muted}>{shortDay(data.daily[0].day)}</Text>
-                  <Text style={styles.muted}>Peak {formatNaira(maxRevenue)}</Text>
-                  <Text style={styles.muted}>{shortDay(data.daily[data.daily.length - 1].day)}</Text>
-                </View>
-              </>
-            )}
-          </View>
+      <Section title="Expense overview" description={`${formatNaira(a.expenses.total)} spent in this period`}>
+        {a.expenses.byCategory.length === 0 ? (
+          <AppText tone="muted">No expenses recorded in this period.</AppText>
+        ) : (
+          <BarList items={a.expenses.byCategory.map((c) => ({ label: capitalise(c.category), value: c.amount }))} format={formatNaira} />
+        )}
+      </Section>
 
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Top products</Text>
-            {data.topProducts.length === 0 && <Text style={styles.muted}>Nothing sold yet.</Text>}
-            {data.topProducts.map((p, i) => (
-              <View key={`${p.productId}-${i}`} style={styles.row}>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.rowTitle}>{p.name}</Text>
-                  <Text style={styles.muted}>{p.units} sold · profit {formatNaira(p.profit)}</Text>
-                </View>
-                <Text style={styles.rowValue}>{formatNaira(p.revenue)}</Text>
-              </View>
+      <Section title="Best sellers">
+        {a.topProducts.length === 0 ? (
+          <AppText tone="muted">Nothing sold in this period yet.</AppText>
+        ) : (
+          a.topProducts.map((t, i, arr) => (
+            <ListRow
+              key={t.productId}
+              title={t.name}
+              subtitle={`${t.units} sold · profit ${formatNaira(t.profit)}`}
+              trailing={<AppText variant="bodyStrong">{formatNaira(t.revenue)}</AppText>}
+              onPress={() => router.push({ pathname: '/product/[id]', params: { id: t.productId } })}
+              last={i === arr.length - 1}
+            />
+          ))
+        )}
+      </Section>
+
+      <Section title="Slow movers" description="Products that sold least in this period">
+        {a.slowProducts.length === 0 ? (
+          <AppText tone="muted">Add products to see how they move.</AppText>
+        ) : (
+          a.slowProducts.map((s, i, arr) => (
+            <ListRow
+              key={s.productId}
+              title={s.name}
+              subtitle={`${s.stock} in stock`}
+              trailing={<Badge label={s.units === 0 ? 'No sales' : `${s.units} sold`} tone={s.units === 0 ? 'warning' : 'neutral'} />}
+              onPress={() => router.push({ pathname: '/product/[id]', params: { id: s.productId } })}
+              last={i === arr.length - 1}
+            />
+          ))
+        )}
+      </Section>
+
+      <Section title="Inventory movement" description="From your stock history">
+        <View style={styles.metrics}>
+          <Metric label="Units sold" value={String(a.inventoryMovement.unitsSold)} />
+          <Metric label="Units added" value={String(a.inventoryMovement.unitsAdded)} />
+          <Metric label="Units removed" value={String(a.inventoryMovement.unitsRemoved)} />
+        </View>
+      </Section>
+
+      <Section title="Customer insights">
+        <View style={styles.metrics}>
+          <Metric label="Buying customers" value={String(a.customers.active)} />
+          <Metric label="New" value={String(a.customers.new)} />
+          <Metric label="Returning" value={String(a.customers.returning)} />
+        </View>
+        {a.customers.total > 0 ? (
+          <AppText variant="caption" tone="muted">
+            {a.customers.total} customer{a.customers.total === 1 ? '' : 's'} on record. Sales without a named customer aren't counted here.
+          </AppText>
+        ) : null}
+        {a.topCustomers.length > 0 ? (
+          <View>
+            <AppText variant="label" tone="muted" style={styles.subhead}>
+              Best customers
+            </AppText>
+            {a.topCustomers.map((c, i, arr) => (
+              <ListRow
+                key={c.customerId}
+                title={c.name}
+                subtitle={`${c.saleCount} purchase${c.saleCount === 1 ? '' : 's'}`}
+                trailing={<AppText variant="bodyStrong">{formatNaira(c.revenue)}</AppText>}
+                onPress={() => router.push({ pathname: '/customer/[id]', params: { id: c.customerId } })}
+                last={i === arr.length - 1}
+              />
             ))}
           </View>
+        ) : null}
+      </Section>
 
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Best customers</Text>
-            {data.topCustomers.length === 0 && <Text style={styles.muted}>No sales linked to a customer yet.</Text>}
-            {data.topCustomers.map((c) => (
-              <View key={c.customerId} style={styles.row}>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.rowTitle}>{c.name}</Text>
-                  <Text style={styles.muted}>{c.saleCount} purchases</Text>
-                </View>
-                <Text style={styles.rowValue}>{formatNaira(c.revenue)}</Text>
-              </View>
-            ))}
-          </View>
-
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>How customers pay</Text>
-            {data.paymentMix.map((m) => (
-              <View key={m.method} style={{ gap: 4 }}>
-                <View style={styles.row}>
-                  <Text style={[styles.rowTitle, { flex: 1 }]}>{METHOD_LABEL[m.method] ?? m.method}</Text>
-                  <Text style={styles.rowValue}>{formatNaira(m.revenue)}</Text>
-                </View>
-                <View style={styles.track}>
-                  <View style={[styles.fill, { width: `${Math.round((m.revenue / totalMix) * 100)}%` }]} />
-                </View>
-              </View>
-            ))}
-          </View>
-        </>
-      ) : (
-        !loading && !error && <Text style={styles.muted}>No data yet.</Text>
-      )}
-    </ScreenContainer>
+      <Section title="How customers pay">
+        {a.paymentMix.length === 0 ? (
+          <AppText tone="muted">No payments in this period.</AppText>
+        ) : (
+          <BarList items={a.paymentMix.map((m) => ({ label: METHOD[m.method] ?? m.method, value: m.revenue }))} format={formatNaira} />
+        )}
+      </Section>
+    </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  subtitle: { color: colors.textMuted, fontSize: 14 },
-  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
-  chip: {
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-  },
-  chipActive: { backgroundColor: colors.primaryMuted, borderColor: colors.primary },
-  chipText: { color: colors.text, fontSize: 13 },
-  chipTextActive: { color: colors.primary, fontWeight: '700' },
-  errorText: { color: colors.danger },
-  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
-  section: {
-    backgroundColor: colors.surface,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: spacing.md,
-    gap: spacing.sm,
-  },
-  sectionTitle: { fontSize: 15, fontWeight: '700', color: colors.text },
-  muted: { color: colors.textMuted, fontSize: 13 },
-  chart: { height: 120, flexDirection: 'row', alignItems: 'flex-end', gap: 2 },
-  barSlot: { flex: 1, height: '100%', justifyContent: 'flex-end' },
-  bar: { backgroundColor: colors.primary, borderTopLeftRadius: 2, borderTopRightRadius: 2 },
-  axis: { flexDirection: 'row', justifyContent: 'space-between' },
-  row: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  rowTitle: { color: colors.text, fontWeight: '600' },
-  rowValue: { color: colors.text, fontWeight: '700' },
-  track: { height: 6, backgroundColor: colors.primaryMuted, borderRadius: 3, overflow: 'hidden' },
-  fill: { height: 6, backgroundColor: colors.primary },
+  metrics: { flexDirection: 'row', gap: spacing.md },
+  metric: { flex: 1, gap: 2 },
+  subhead: { marginTop: spacing.sm, marginBottom: spacing.xs },
 });

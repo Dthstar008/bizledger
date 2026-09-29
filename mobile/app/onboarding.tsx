@@ -42,7 +42,7 @@ const ORBIT_POSITIONS = [
 
 function Illustration({ hero, orbit }: { hero: Icon; orbit: Icon[] }) {
   return (
-    <View style={styles.illustration} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+    <View style={styles.illustration} aria-hidden>
       <View style={styles.ring} />
       <View style={styles.hero}>
         <Ionicons name={hero} size={56} color={colors.primary} />
@@ -57,10 +57,13 @@ function Illustration({ hero, orbit }: { hero: Icon; orbit: Icon[] }) {
 }
 
 export default function OnboardingScreen() {
-  const { width } = useLayout();
+  const { width: windowWidth } = useLayout();
   const markSeen = usePrefs((s) => s.markOnboardingSeen);
   const scroller = useRef<ScrollView>(null);
   const [index, setIndex] = useState(0);
+  // Page width is the pager's own measured width, not the window's (they differ on web and in split screen).
+  const [pageWidth, setPageWidth] = useState(windowWidth);
+  const width = pageWidth;
   const last = index === SLIDES.length - 1;
 
   const goTo = (i: number) => {
@@ -94,6 +97,13 @@ export default function OnboardingScreen() {
         pagingEnabled
         showsHorizontalScrollIndicator={false}
         onMomentumScrollEnd={onScrollEnd}
+        onLayout={(e) => {
+          const w = e.nativeEvent.layout.width;
+          if (w > 0 && w !== pageWidth) {
+            setPageWidth(w);
+            scroller.current?.scrollTo({ x: index * w, animated: false });
+          }
+        }}
         style={styles.flex}
       >
         {SLIDES.map((s) => (

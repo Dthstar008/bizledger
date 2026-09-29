@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { LayoutChangeEvent, StyleSheet, View } from 'react-native';
+import { LayoutChangeEvent, Platform, StyleSheet, View } from 'react-native';
 import Svg, { Line, Path, Rect, Text as SvgText } from 'react-native-svg';
 import { AppText } from './AppText';
 import { colors, radius, spacing } from '../theme';
@@ -10,6 +10,9 @@ export interface TrendPoint {
   /** Optional second series drawn as a line (e.g. expenses). */
   secondary?: number;
 }
+
+// SVG text defaults to a serif font on web; native already uses the system sans.
+const AXIS_FONT = Platform.OS === 'web' ? 'system-ui, -apple-system, Segoe UI, Roboto, sans-serif' : undefined;
 
 /** Compact naira for axis labels: ₦1.2m, ₦45k. */
 export function shortNaira(n: number): string {
@@ -67,7 +70,7 @@ export function TrendChart({ data, height = 180, primaryLabel, secondaryLabel }:
               <Line key={f} x1={axisW} x2={width} y1={y(max * f)} y2={y(max * f)} stroke={colors.border} strokeWidth={1} />
             ))}
             {[0, 0.5, 1].map((f) => (
-              <SvgText key={`l${f}`} x={axisW - 6} y={y(max * f) + 4} fontSize={10} fill={colors.textSubtle} textAnchor="end">
+              <SvgText key={`l${f}`} x={axisW - 6} y={y(max * f) + 4} fontSize={10} fontFamily={AXIS_FONT} fill={colors.textSubtle} textAnchor="end">
                 {shortNaira(max * f)}
               </SvgText>
             ))}
@@ -88,7 +91,7 @@ export function TrendChart({ data, height = 180, primaryLabel, secondaryLabel }:
             {hasSecondary ? <Path d={linePath} stroke={colors.warning} strokeWidth={2} fill="none" /> : null}
             {data.map((d, i) =>
               i % every === 0 || i === data.length - 1 ? (
-                <SvgText key={`x${i}`} x={axisW + slot * i + slot / 2} y={height - 6} fontSize={10} fill={colors.textSubtle} textAnchor="middle">
+                <SvgText key={`x${i}`} x={axisW + slot * i + slot / 2} y={height - 6} fontSize={10} fontFamily={AXIS_FONT} fill={colors.textSubtle} textAnchor="middle">
                   {d.label}
                 </SvgText>
               ) : null,

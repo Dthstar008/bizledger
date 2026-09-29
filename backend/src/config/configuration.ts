@@ -19,7 +19,9 @@ export default () => ({
     password: process.env.DB_PASSWORD || 'postgres',
     name: process.env.DB_DATABASE || 'bizledger',
     ssl: process.env.DB_SSL === 'true',
-    poolMax: parseInt(process.env.DB_POOL_MAX || '20', 10),
+    // Supabase's free session pooler allows 15 connections across every client, and
+    // more than one API instance can share it; queries beyond the pool queue instead of failing.
+    poolMax: parseInt(process.env.DB_POOL_MAX || '5', 10),
     connectTimeoutMs: parseInt(process.env.DB_CONNECT_TIMEOUT_MS || '10000', 10),
   },
   jwt: {

@@ -6,13 +6,16 @@ import { colors, spacing } from '../theme';
 /** BizLedger mark: three ledger rows and a rising tick. */
 export function BrandMark({ size = 56 }: { size?: number }) {
   return (
-    <Svg width={size} height={size} viewBox="0 0 60 60" accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
-      <Rect width="60" height="60" rx="16" fill={colors.primary} />
-      <Path d="M14 21 H34" stroke="#FFFFFF" strokeWidth="5" strokeLinecap="round" />
-      <Path d="M14 31 H42" stroke="#FFFFFF" strokeWidth="5" strokeLinecap="round" />
-      <Path d="M14 41 H28" stroke="#FFFFFF" strokeWidth="5" strokeLinecap="round" />
-      <Path d="M33 44 L39 38 L43 41 L49 32" stroke={colors.primaryMuted} strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" fill="none" />
-    </Svg>
+    // Decorative: hidden from screen readers (aria-hidden works on iOS, Android and web).
+    <View aria-hidden>
+      <Svg width={size} height={size} viewBox="0 0 60 60">
+        <Rect width="60" height="60" rx="16" fill={colors.primary} />
+        <Path d="M14 21 H34" stroke="#FFFFFF" strokeWidth="5" strokeLinecap="round" />
+        <Path d="M14 31 H42" stroke="#FFFFFF" strokeWidth="5" strokeLinecap="round" />
+        <Path d="M14 41 H28" stroke="#FFFFFF" strokeWidth="5" strokeLinecap="round" />
+        <Path d="M33 44 L39 38 L43 41 L49 32" stroke={colors.primaryMuted} strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+      </Svg>
+    </View>
   );
 }
 
