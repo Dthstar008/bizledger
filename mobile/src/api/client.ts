@@ -21,10 +21,18 @@ const apiUrl =
   (Constants.expoConfig?.extra?.apiUrl as string | undefined) ??
   defaultApiUrl;
 
+export const apiBaseUrl = apiUrl;
+
 export const apiClient = axios.create({
   baseURL: apiUrl,
   timeout: 15000,
 });
+
+/** Auth header for requests made outside axios (e.g. <Image> loading a product photo). */
+export function authHeaders(): Record<string, string> {
+  const token = useAuthStore.getState().token;
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
 
 /** Start waking the server early (e.g. on app launch) so the first real request doesn't wait. */
 export function warmUpServer() {
@@ -73,13 +81,49 @@ apiClient.interceptors.response.use(
   },
 );
 
+// Server field names as people would say them, for validation messages.
+const FIELD_NAMES: Record<string, string> = {
+  costPrice: 'Cost price',
+  sellingPrice: 'Selling price',
+  stockQty: 'Stock quantity',
+  lowStockThreshold: 'Low-stock alert level',
+  businessName: 'Business name',
+  ownerName: 'Your name',
+  amountPaid: 'Amount paid',
+  paymentMethod: 'Payment method',
+  customerId: 'Customer',
+  branchId: 'Branch',
+  stockAdjustmentReason: 'Reason',
+};
+
+function humanise(message: string): string {
+  // class-validator messages start with the property name, e.g. "costPrice must not be less than 0".
+  const [first, ...rest] = message.split(' ');
+  const friendly = FIELD_NAMES[first] ?? (first ? first[0].toUpperCase() + first.slice(1) : first);
+  return [friendly, ...rest].join(' ').replace('must not be less than', 'must be at least').replace('should not be empty', 'is required');
+}
+
+/**
+ * Turns any API failure into a sentence a business owner can act on. Raw
+ * server errors (stack traces, SQL, "Internal server error") never reach the UI.
+ */
 export function apiErrorMessage(error: unknown): string {
-  if (axios.isAxiosError(error)) {
-    const data = error.response?.data as { message?: string | string[] } | undefined;
-    if (Array.isArray(data?.message)) return data!.message.join(', ');
-    if (data?.message) return data.message;
-    if (!error.response) return "Couldn't reach the server. Check your internet connection and try again.";
-    if (error.message) return error.message;
+  if (!axios.isAxiosError(error)) return 'Something went wrong. Please try again.';
+  if (!error.response) {
+    return error.code === 'ECONNABORTED'
+      ? 'The server took too long to respond. Check your connection and try again.'
+      : "Couldn't reach the server. Check your internet connection and try again.";
   }
-  return 'Something went wrong. Please try again.';
+  const { status } = error.response;
+  const data = error.response.data as { message?: string | string[] } | undefined;
+  const serverMessage = Array.isArray(data?.message) ? data!.message.map(humanise).join('\n') : data?.message;
+
+  if (status === 401) return 'Your session has ended. Please sign in again.';
+  if (status === 403) return "Your account doesn't have access to this. Ask the business owner.";
+  if (status === 404) return serverMessage && serverMessage !== 'Not Found' ? serverMessage : "We couldn't find that. It may have been deleted.";
+  if (status === 413) return 'That file is too large. Choose a smaller photo.';
+  if (status === 429) return 'Too many attempts. Wait a moment and try again.';
+  if (status >= 500) return 'Something went wrong on our side. Please try again in a moment.';
+  // 400/409: our API writes these messages for people, so show them (field names made readable).
+  return serverMessage ? humanise(serverMessage) : 'Please check the details and try again.';
 }

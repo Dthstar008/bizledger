@@ -1,31 +1,73 @@
-import { ActivityIndicator, Pressable, StyleSheet, Text } from 'react-native';
-import { colors, radius, spacing } from '../theme';
+import { ComponentProps } from 'react';
+import { ActivityIndicator, Pressable, StyleSheet, View, ViewStyle } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { AppText } from './AppText';
+import { colors, radius, spacing, touch } from '../theme';
+
+type IconName = ComponentProps<typeof Ionicons>['name'];
+type Variant = 'primary' | 'secondary' | 'ghost' | 'danger';
+type Size = 'md' | 'sm';
 
 interface Props {
   label: string;
   onPress: () => void;
+  variant?: Variant;
+  size?: Size;
+  icon?: IconName;
   loading?: boolean;
   disabled?: boolean;
-  variant?: 'primary' | 'secondary';
+  /** Stretch to the container width (forms, sticky footers). Otherwise the button hugs its label. */
+  fullWidth?: boolean;
+  accessibilityLabel?: string;
+  style?: ViewStyle;
 }
 
-export function Button({ label, onPress, loading, disabled, variant = 'primary' }: Props) {
-  const isPrimary = variant === 'primary';
+const fg: Record<Variant, string> = {
+  primary: colors.onPrimary,
+  secondary: colors.text,
+  ghost: colors.primary,
+  danger: colors.onPrimary,
+};
+
+export function Button({
+  label,
+  onPress,
+  variant = 'primary',
+  size = 'md',
+  icon,
+  loading,
+  disabled,
+  fullWidth,
+  accessibilityLabel,
+  style,
+}: Props) {
+  const inactive = disabled || loading;
   return (
     <Pressable
       onPress={onPress}
-      disabled={disabled || loading}
+      disabled={inactive}
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel ?? label}
+      accessibilityState={{ disabled: !!inactive, busy: !!loading }}
       style={({ pressed }) => [
         styles.base,
-        isPrimary ? styles.primary : styles.secondary,
-        (disabled || loading) && styles.disabled,
-        pressed && !disabled && !loading && styles.pressed,
+        size === 'sm' ? styles.sm : styles.md,
+        styles[variant],
+        fullWidth ? styles.full : styles.hug,
+        pressed && !inactive && (variant === 'primary' ? styles.primaryPressed : styles.pressed),
+        inactive && styles.disabled,
+        style,
       ]}
     >
       {loading ? (
-        <ActivityIndicator color={isPrimary ? '#fff' : colors.primary} />
+        <ActivityIndicator color={fg[variant]} size="small" />
       ) : (
-        <Text style={isPrimary ? styles.primaryText : styles.secondaryText}>{label}</Text>
+        <View style={styles.row}>
+          {icon ? <Ionicons name={icon} size={size === 'sm' ? 16 : 18} color={fg[variant]} /> : null}
+          <AppText variant={size === 'sm' ? 'label' : 'bodyStrong'} style={{ color: fg[variant] }} numberOfLines={1}>
+            {label}
+          </AppText>
+        </View>
       )}
     </Pressable>
   );
@@ -34,32 +76,21 @@ export function Button({ label, onPress, loading, disabled, variant = 'primary' 
 const styles = StyleSheet.create({
   base: {
     borderRadius: radius.md,
-    paddingVertical: spacing.md,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  primary: {
-    backgroundColor: colors.primary,
-  },
-  secondary: {
-    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: 'transparent',
   },
-  disabled: {
-    opacity: 0.5,
-  },
-  pressed: {
-    opacity: 0.85,
-  },
-  primaryText: {
-    color: '#fff',
-    fontWeight: '600',
-    fontSize: 16,
-  },
-  secondaryText: {
-    color: colors.text,
-    fontWeight: '600',
-    fontSize: 16,
-  },
+  md: { minHeight: touch.min + 4, paddingHorizontal: spacing.lg - 4 },
+  sm: { minHeight: 36, paddingHorizontal: spacing.md - 2, borderRadius: radius.sm },
+  full: { alignSelf: 'stretch' },
+  hug: { alignSelf: 'flex-start' },
+  row: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  primary: { backgroundColor: colors.primary },
+  primaryPressed: { backgroundColor: colors.primaryPressed },
+  secondary: { backgroundColor: colors.surface, borderColor: colors.borderStrong },
+  ghost: { backgroundColor: 'transparent' },
+  danger: { backgroundColor: colors.danger },
+  pressed: { opacity: 0.75 },
+  disabled: { opacity: 0.45 },
 });

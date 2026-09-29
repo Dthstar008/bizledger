@@ -1,13 +1,17 @@
 import { useState } from 'react';
-import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
-import { Link, router } from 'expo-router';
-import { ScreenContainer } from '../src/components/ScreenContainer';
+import { Pressable, StyleSheet, View } from 'react-native';
+import { router } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
+import { AuthLayout } from '../src/components/AuthLayout';
+import { AppText } from '../src/components/AppText';
 import { TextField } from '../src/components/TextField';
 import { Button } from '../src/components/Button';
+import { InlineError } from '../src/components/Feedback';
 import { registerBusiness } from '../src/api/auth';
 import { apiErrorMessage } from '../src/api/client';
 import { useAuthStore } from '../src/store/auth-store';
-import { colors, radius, spacing } from '../src/theme';
+import { isEmail } from '../src/utils/validate';
+import { colors, radius, spacing, touch } from '../src/theme';
 
 export default function RegisterScreen() {
   const setAuth = useAuthStore((s) => s.setAuth);
@@ -17,10 +21,23 @@ export default function RegisterScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmedAdult, setConfirmedAdult] = useState(false);
+  const [touched, setTouched] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const errors = {
+    businessName: touched && !businessName.trim() ? 'Enter your business name' : undefined,
+    email: touched && !isEmail(email) ? 'Enter a valid email address' : undefined,
+    password: touched && password.length < 6 ? 'Use at least 6 characters' : undefined,
+    adult: touched && !confirmedAdult ? 'You must be 18 or older to create an account' : undefined,
+  };
+  const valid = businessName.trim() && isEmail(email) && password.length >= 6 && confirmedAdult;
 
   async function handleRegister() {
+    setTouched(true);
+    if (!valid) return;
     setLoading(true);
+    setError(null);
     try {
       const res = await registerBusiness({
         businessName: businessName.trim(),
@@ -33,93 +50,113 @@ export default function RegisterScreen() {
       setAuth({ token: res.accessToken, business: res.business, user: res.user });
       router.replace('/(tabs)');
     } catch (err) {
-      Alert.alert('Could not create account', apiErrorMessage(err));
+      setError(apiErrorMessage(err));
     } finally {
       setLoading(false);
     }
   }
 
-  const canSubmit =
-    businessName.trim().length > 0 && email.trim().length > 0 && password.length >= 6 && confirmedAdult;
-
   return (
-    <ScreenContainer>
-      <View style={styles.header}>
-        <Text style={styles.title}>Set up your business</Text>
-        <Text style={styles.subtitle}>Takes a minute. No accounting knowledge needed.</Text>
-      </View>
-
-      <TextField label="Business name" value={businessName} onChangeText={setBusinessName} placeholder="Chidi Phone Accessories" />
-      <TextField label="Your name" value={ownerName} onChangeText={setOwnerName} placeholder="Chidi Eze" />
-      <TextField label="Phone" value={phone} onChangeText={setPhone} keyboardType="phone-pad" placeholder="080..." />
-      <TextField label="Email" autoCapitalize="none" keyboardType="email-address" value={email} onChangeText={setEmail} placeholder="you@business.com" />
-      <TextField label="Password" secureTextEntry value={password} onChangeText={setPassword} placeholder="At least 6 characters" />
-
-      <Pressable style={styles.checkboxRow} onPress={() => setConfirmedAdult((v) => !v)}>
-        <View style={[styles.checkbox, confirmedAdult && styles.checkboxChecked]}>
-          {confirmedAdult ? <Text style={styles.checkboxMark}>✓</Text> : null}
+    <AuthLayout
+      heading="Create your business account"
+      subheading="Takes a minute. No accounting knowledge needed."
+      footer={
+        <Pressable onPress={() => router.replace('/login')} accessibilityRole="link" hitSlop={8} style={styles.link}>
+          <AppText tone="muted">
+            Already have an account? <AppText variant="bodyStrong" tone="primary">Sign in</AppText>
+          </AppText>
+        </Pressable>
+      }
+    >
+      {error ? <InlineError message={error} /> : null}
+      <TextField
+        label="Business name"
+        leftIcon="storefront-outline"
+        value={businessName}
+        onChangeText={setBusinessName}
+        placeholder="Chidi Phone Accessories"
+        autoCapitalize="words"
+        error={errors.businessName}
+      />
+      <TextField
+        label="Your name"
+        leftIcon="person-outline"
+        value={ownerName}
+        onChangeText={setOwnerName}
+        placeholder="Chidi Eze"
+        autoCapitalize="words"
+        autoComplete="name"
+        helper="Used to greet you on your dashboard"
+      />
+      <TextField
+        label="Phone (optional)"
+        leftIcon="call-outline"
+        value={phone}
+        onChangeText={setPhone}
+        keyboardType="phone-pad"
+        autoComplete="tel"
+        placeholder="0801 234 5678"
+      />
+      <TextField
+        label="Email"
+        leftIcon="mail-outline"
+        autoCapitalize="none"
+        autoComplete="email"
+        keyboardType="email-address"
+        value={email}
+        onChangeText={setEmail}
+        placeholder="you@business.com"
+        error={errors.email}
+      />
+      <TextField
+        label="Password"
+        leftIcon="lock-closed-outline"
+        secureToggle
+        autoComplete="new-password"
+        textContentType="newPassword"
+        value={password}
+        onChangeText={setPassword}
+        placeholder="At least 6 characters"
+        error={errors.password}
+      />
+      <Pressable
+        style={styles.checkRow}
+        onPress={() => setConfirmedAdult((v) => !v)}
+        accessibilityRole="checkbox"
+        accessibilityState={{ checked: confirmedAdult }}
+      >
+        <View style={[styles.box, confirmedAdult && styles.boxChecked, !!errors.adult && styles.boxError]}>
+          {confirmedAdult ? <Ionicons name="checkmark" size={16} color={colors.onPrimary} /> : null}
         </View>
-        <Text style={styles.checkboxLabel}>I confirm I am 18 years of age or older</Text>
+        <AppText style={styles.flex}>I confirm I am 18 years of age or older</AppText>
       </Pressable>
-
-      <Button label="Create account" onPress={handleRegister} loading={loading} disabled={!canSubmit} />
-
-      <Link href="/login" style={styles.link}>
-        <Text style={styles.linkText}>Already have an account? Sign in</Text>
-      </Link>
-    </ScreenContainer>
+      {errors.adult ? (
+        <AppText variant="caption" tone="danger">
+          {errors.adult}
+        </AppText>
+      ) : null}
+      <View style={styles.action}>
+        <Button label="Create account" onPress={handleRegister} loading={loading} fullWidth />
+      </View>
+    </AuthLayout>
   );
 }
 
 const styles = StyleSheet.create({
-  header: {
-    marginBottom: spacing.sm,
-    gap: spacing.xs,
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: colors.text,
-  },
-  subtitle: {
-    fontSize: 15,
-    color: colors.textMuted,
-  },
-  checkboxRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-  },
-  checkbox: {
-    width: 22,
-    height: 22,
-    borderRadius: radius.sm,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
+  flex: { flex: 1 },
+  checkRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm + 4, minHeight: touch.min },
+  box: {
+    width: 24,
+    height: 24,
+    borderRadius: radius.sm - 2,
+    borderWidth: 1.5,
+    borderColor: colors.borderStrong,
     alignItems: 'center',
     justifyContent: 'center',
+    backgroundColor: colors.surface,
   },
-  checkboxChecked: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primary,
-  },
-  checkboxMark: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  checkboxLabel: {
-    flex: 1,
-    fontSize: 14,
-    color: colors.text,
-  },
-  link: {
-    marginTop: spacing.sm,
-    alignSelf: 'center',
-  },
-  linkText: {
-    color: colors.primary,
-    fontWeight: '600',
-  },
+  boxChecked: { backgroundColor: colors.primary, borderColor: colors.primary },
+  boxError: { borderColor: colors.danger },
+  action: { marginTop: spacing.xs },
+  link: { paddingVertical: spacing.sm },
 });

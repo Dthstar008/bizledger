@@ -1,89 +1,96 @@
-import { useState } from 'react';
-import { Alert, StyleSheet, Text, View } from 'react-native';
-import { Link, router } from 'expo-router';
-import { ScreenContainer } from '../src/components/ScreenContainer';
+import { useRef, useState } from 'react';
+import { Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { router } from 'expo-router';
+import { AuthLayout } from '../src/components/AuthLayout';
+import { AppText } from '../src/components/AppText';
 import { TextField } from '../src/components/TextField';
 import { Button } from '../src/components/Button';
+import { InlineError } from '../src/components/Feedback';
 import { login } from '../src/api/auth';
 import { apiErrorMessage } from '../src/api/client';
 import { useAuthStore } from '../src/store/auth-store';
-import { colors, spacing } from '../src/theme';
+import { isEmail } from '../src/utils/validate';
+import { spacing } from '../src/theme';
 
 export default function LoginScreen() {
   const setAuth = useAuthStore((s) => s.setAuth);
+  const passwordRef = useRef<TextInput>(null);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [touched, setTouched] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const emailError = touched && !isEmail(email) ? 'Enter a valid email address' : undefined;
+  const passwordError = touched && !password ? 'Enter your password' : undefined;
 
   async function handleLogin() {
+    setTouched(true);
+    if (!isEmail(email) || !password) return;
     setLoading(true);
+    setError(null);
     try {
       const res = await login({ email: email.trim(), password });
       setAuth({ token: res.accessToken, business: res.business, user: res.user });
       router.replace(res.user.role === 'staff' ? '/(tabs)/sales' : '/(tabs)');
     } catch (err) {
-      Alert.alert('Could not sign in', apiErrorMessage(err));
+      // A 401 here means wrong credentials, not an expired session.
+      const status = (err as { response?: { status?: number } })?.response?.status;
+      setError(status === 401 ? 'That email and password combination is not correct.' : apiErrorMessage(err));
     } finally {
       setLoading(false);
     }
   }
 
   return (
-    <ScreenContainer style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.title}>BizLedger</Text>
-        <Text style={styles.subtitle}>Run your entire business from your phone.</Text>
-      </View>
-
+    <AuthLayout
+      heading="Welcome back"
+      subheading="Sign in to continue to your business."
+      footer={
+        <Pressable onPress={() => router.replace('/register')} accessibilityRole="link" hitSlop={8} style={styles.link}>
+          <AppText tone="muted">
+            New to BizLedger? <AppText variant="bodyStrong" tone="primary">Create an account</AppText>
+          </AppText>
+        </Pressable>
+      }
+    >
+      {error ? <InlineError message={error} /> : null}
       <TextField
         label="Email"
+        leftIcon="mail-outline"
         autoCapitalize="none"
+        autoComplete="email"
         keyboardType="email-address"
+        textContentType="emailAddress"
+        returnKeyType="next"
         value={email}
         onChangeText={setEmail}
+        onSubmitEditing={() => passwordRef.current?.focus()}
         placeholder="you@business.com"
+        error={emailError}
       />
       <TextField
+        ref={passwordRef}
         label="Password"
-        secureTextEntry
+        leftIcon="lock-closed-outline"
+        secureToggle
+        autoComplete="password"
+        textContentType="password"
+        returnKeyType="go"
         value={password}
         onChangeText={setPassword}
-        placeholder="••••••••"
+        onSubmitEditing={handleLogin}
+        placeholder="Your password"
+        error={passwordError}
       />
-
-      <Button label="Sign in" onPress={handleLogin} loading={loading} disabled={!email || !password} />
-
-      <Link href="/register" style={styles.link}>
-        <Text style={styles.linkText}>New business? Create an account</Text>
-      </Link>
-    </ScreenContainer>
+      <View style={styles.action}>
+        <Button label="Sign in" onPress={handleLogin} loading={loading} fullWidth />
+      </View>
+    </AuthLayout>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flexGrow: 1,
-    justifyContent: 'center',
-  },
-  header: {
-    marginBottom: spacing.lg,
-    gap: spacing.xs,
-  },
-  title: {
-    fontSize: 28,
-    fontWeight: '700',
-    color: colors.text,
-  },
-  subtitle: {
-    fontSize: 15,
-    color: colors.textMuted,
-  },
-  link: {
-    marginTop: spacing.sm,
-    alignSelf: 'center',
-  },
-  linkText: {
-    color: colors.primary,
-    fontWeight: '600',
-  },
+  action: { marginTop: spacing.xs },
+  link: { paddingVertical: spacing.sm },
 });
