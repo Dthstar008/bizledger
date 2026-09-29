@@ -1,7 +1,8 @@
-import axios from 'axios';
+import axios, { InternalAxiosRequestConfig } from 'axios';
 import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 import { selectIsOwner, useAuthStore } from '../store/auth-store';
+import { ensureServerAwake, markServerContact } from './server-status';
 
 const HOSTED_API_URL = 'https://bizledger-api-iitk.onrender.com';
 
@@ -25,7 +26,15 @@ export const apiClient = axios.create({
   timeout: 15000,
 });
 
-apiClient.interceptors.request.use((config) => {
+/** Start waking the server early (e.g. on app launch) so the first real request doesn't wait. */
+export function warmUpServer() {
+  void ensureServerAwake(apiUrl);
+}
+
+apiClient.interceptors.request.use(async (config) => {
+  // If the server may have gone to sleep, wait for it to wake before sending,
+  // rather than letting this request hit the normal 15s timeout.
+  await ensureServerAwake(apiUrl);
   const state = useAuthStore.getState();
   if (state.token) {
     config.headers.Authorization = `Bearer ${state.token}`;
@@ -38,10 +47,27 @@ apiClient.interceptors.request.use((config) => {
 });
 
 apiClient.interceptors.response.use(
-  (response) => response,
-  (error) => {
-    if (error.response?.status === 401) {
-      useAuthStore.getState().logout();
+  (response) => {
+    markServerContact();
+    return response;
+  },
+  async (error) => {
+    if (error.response) {
+      markServerContact();
+      if (error.response.status === 401) {
+        useAuthStore.getState().logout();
+      }
+      return Promise.reject(error);
+    }
+
+    // No response at all: timeout or network drop, possibly the server fell
+    // asleep mid-session. Only reads are retried: a timed-out write may still
+    // have been processed, and replaying it could record a sale twice.
+    const config = error.config as (InternalAxiosRequestConfig & { _retried?: boolean }) | undefined;
+    if (config && !config._retried && (config.method ?? 'get').toLowerCase() === 'get') {
+      config._retried = true;
+      await ensureServerAwake(apiUrl, true);
+      return apiClient(config);
     }
     return Promise.reject(error);
   },
@@ -52,6 +78,7 @@ export function apiErrorMessage(error: unknown): string {
     const data = error.response?.data as { message?: string | string[] } | undefined;
     if (Array.isArray(data?.message)) return data!.message.join(', ');
     if (data?.message) return data.message;
+    if (!error.response) return "Couldn't reach the server. Check your internet connection and try again.";
     if (error.message) return error.message;
   }
   return 'Something went wrong. Please try again.';
