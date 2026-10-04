@@ -224,5 +224,5 @@ deployment record.
   text to `app.json`, set the Android icon background to the brand mint,
   and aligned five Expo packages with SDK 57's expected versions
   (expo-doctor 21/21).
-- Queued a new Android preview build on EAS, needed because photo picking
-  and charts add native modules.
+- Built a new Android preview APK on EAS (needed because photo picking and
+  charts add native modules); it finished cleanly on the first attempt.
