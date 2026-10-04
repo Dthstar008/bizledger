@@ -128,8 +128,10 @@ export class AnalyticsService {
           `SELECT si."productId" AS "productId", si."productName" AS name,
                   SUM(si.quantity) AS units,
                   SUM(si."lineTotal") AS revenue,
-                  SUM(si."lineTotal" - si."unitCostPrice" * si.quantity) AS profit
+                  SUM(si."lineTotal" - si."unitCostPrice" * si.quantity) AS profit,
+                  MAX(p."imageUpdatedAt") AS "imageUpdatedAt"
              FROM sale_items si JOIN sales s ON s.id = si."saleId"
+             LEFT JOIN products p ON p.id = si."productId"
             WHERE ${where}
             GROUP BY si."productId", si."productName"
             ORDER BY revenue DESC LIMIT 5`,
@@ -176,7 +178,7 @@ export class AnalyticsService {
         ),
         // LEFT JOIN from products so items that didn't sell at all show up as slow movers.
         this.dataSource.query(
-          `SELECT p.id AS "productId", p.name AS name, p."stockQty" AS stock,
+          `SELECT p.id AS "productId", p.name AS name, p."stockQty" AS stock, p."imageUpdatedAt" AS "imageUpdatedAt",
                   COALESCE(x.units, 0) AS units, COALESCE(x.revenue, 0) AS revenue
              FROM products p
              LEFT JOIN (
@@ -263,6 +265,7 @@ export class AnalyticsService {
         units: num(r.units),
         revenue: num(r.revenue),
         profit: num(r.profit),
+        imageUpdatedAt: r.imageUpdatedAt ?? null,
       })),
       slowProducts: slowProducts.map((r: Record<string, unknown>) => ({
         productId: r.productId,
@@ -270,6 +273,7 @@ export class AnalyticsService {
         stock: num(r.stock),
         units: num(r.units),
         revenue: num(r.revenue),
+        imageUpdatedAt: r.imageUpdatedAt ?? null,
       })),
       topCustomers: topCustomers.map((r: Record<string, unknown>) => ({
         customerId: r.customerId,

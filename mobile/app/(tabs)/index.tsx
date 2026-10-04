@@ -164,7 +164,7 @@ export default function DashboardScreen() {
                 key={p.productId}
                 title={p.name}
                 subtitle={`${p.units} sold`}
-                leading={<ProductImage product={{ id: p.productId, name: p.name, imageUpdatedAt: null }} size={36} />}
+                leading={<ProductImage product={{ id: p.productId, name: p.name, imageUpdatedAt: p.imageUpdatedAt }} size={36} />}
                 trailing={<AppText variant="bodyStrong">{formatNaira(p.revenue)}</AppText>}
                 last={i === arr.length - 1}
               />

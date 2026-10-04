@@ -8,6 +8,7 @@ import { Section } from '../src/components/Card';
 import { StatCard, StatGrid } from '../src/components/StatCard';
 import { AppText } from '../src/components/AppText';
 import { ListRow } from '../src/components/ListRow';
+import { ProductImage } from '../src/components/ProductImage';
 import { Badge } from '../src/components/Badge';
 import { BarList, TrendChart } from '../src/components/Charts';
 import { ErrorState, InlineError, Skeleton, SkeletonStats } from '../src/components/Feedback';
@@ -132,6 +133,7 @@ export default function AnalyticsScreen() {
               key={t.productId}
               title={t.name}
               subtitle={`${t.units} sold · profit ${formatNaira(t.profit)}`}
+              leading={<ProductImage product={{ id: t.productId, name: t.name, imageUpdatedAt: t.imageUpdatedAt }} size={40} />}
               trailing={<AppText variant="bodyStrong">{formatNaira(t.revenue)}</AppText>}
               onPress={() => router.push({ pathname: '/product/[id]', params: { id: t.productId } })}
               last={i === arr.length - 1}
@@ -149,6 +151,7 @@ export default function AnalyticsScreen() {
               key={s.productId}
               title={s.name}
               subtitle={`${s.stock} in stock`}
+              leading={<ProductImage product={{ id: s.productId, name: s.name, imageUpdatedAt: s.imageUpdatedAt }} size={40} />}
               trailing={<Badge label={s.units === 0 ? 'No sales' : `${s.units} sold`} tone={s.units === 0 ? 'warning' : 'neutral'} />}
               onPress={() => router.push({ pathname: '/product/[id]', params: { id: s.productId } })}
               last={i === arr.length - 1}

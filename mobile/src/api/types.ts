@@ -150,8 +150,8 @@ export interface Analytics {
   netProfit: number;
   daily: DailyPoint[];
   series: SeriesPoint[];
-  topProducts: { productId: string; name: string; units: number; revenue: number; profit: number }[];
-  slowProducts: { productId: string; name: string; stock: number; units: number; revenue: number }[];
+  topProducts: { productId: string; name: string; units: number; revenue: number; profit: number; imageUpdatedAt: string | null }[];
+  slowProducts: { productId: string; name: string; stock: number; units: number; revenue: number; imageUpdatedAt: string | null }[];
   topCustomers: { customerId: string; name: string; revenue: number; saleCount: number }[];
   paymentMix: { method: PaymentMethod; revenue: number; saleCount: number }[];
   expenses: { total: number; byCategory: { category: ExpenseCategory; amount: number; count: number }[] };
