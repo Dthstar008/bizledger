@@ -1,7 +1,11 @@
 import { useEffect, useRef } from 'react';
-import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Modal, StyleSheet, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 import { CameraView, useCameraPermissions } from 'expo-camera';
+import { AppText } from './AppText';
 import { Button } from './Button';
+import { IconButton } from './IconButton';
 import { colors, radius, spacing } from '../theme';
 
 interface Props {
@@ -11,6 +15,7 @@ interface Props {
 }
 
 export function BarcodeScanner({ visible, onScanned, onClose }: Props) {
+  const insets = useSafeAreaInsets();
   const [permission, requestPermission] = useCameraPermissions();
   // The camera fires continuously while a code is in view; only report the first.
   const handled = useRef(false);
@@ -36,22 +41,35 @@ export function BarcodeScanner({ visible, onScanned, onClose }: Props) {
                 onScanned(data);
               }}
             />
-            <View style={styles.frame} pointerEvents="none" />
-            <Text style={styles.hint}>Point the camera at a barcode</Text>
+            <View style={styles.overlay} pointerEvents="none">
+              <View style={styles.frame} />
+              <AppText variant="bodyStrong" style={styles.light}>
+                Point the camera at a barcode
+              </AppText>
+              <AppText variant="caption" style={styles.dim}>
+                It scans automatically
+              </AppText>
+            </View>
           </>
         ) : (
           <View style={styles.permission}>
-            <Text style={styles.permissionText}>
+            <View style={styles.permissionIcon}>
+              <Ionicons name="camera-outline" size={32} color={colors.primary} />
+            </View>
+            <AppText variant="heading" align="center" style={styles.light}>
+              Camera access needed
+            </AppText>
+            <AppText align="center" style={styles.dim}>
               {permission && !permission.canAskAgain
-                ? 'Camera access is turned off. Enable it in your phone settings to scan barcodes.'
-                : 'BizLedger needs camera access to scan product barcodes.'}
-            </Text>
-            {(!permission || permission.canAskAgain) && <Button label="Allow camera" onPress={requestPermission} />}
+                ? 'Camera access is turned off. Turn it on in your phone settings to scan barcodes.'
+                : 'BizLedger uses the camera only to scan product barcodes.'}
+            </AppText>
+            {!permission || permission.canAskAgain ? <Button label="Allow camera" icon="camera-outline" onPress={requestPermission} /> : null}
           </View>
         )}
-        <Pressable style={styles.close} onPress={onClose}>
-          <Text style={styles.closeText}>Close</Text>
-        </Pressable>
+        <View style={[styles.close, { top: insets.top + spacing.sm }]}>
+          <IconButton icon="close" variant="filled" accessibilityLabel="Close scanner" onPress={onClose} />
+        </View>
       </View>
     </Modal>
   );
@@ -59,34 +77,26 @@ export function BarcodeScanner({ visible, onScanned, onClose }: Props) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#000' },
+  overlay: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, alignItems: 'center', justifyContent: 'center', gap: spacing.sm, padding: spacing.lg },
   frame: {
-    position: 'absolute',
-    top: '30%',
-    left: '10%',
-    right: '10%',
+    width: '80%',
+    maxWidth: 360,
     height: 180,
-    borderWidth: 2,
-    borderColor: '#fff',
-    borderRadius: radius.md,
-  },
-  hint: {
-    position: 'absolute',
-    top: '30%',
-    marginTop: 200,
-    alignSelf: 'center',
-    color: '#fff',
-    fontSize: 15,
-  },
-  permission: { flex: 1, justifyContent: 'center', padding: spacing.lg, gap: spacing.md },
-  permissionText: { color: '#fff', fontSize: 16, textAlign: 'center' },
-  close: {
-    position: 'absolute',
-    bottom: 48,
-    alignSelf: 'center',
-    backgroundColor: colors.surface,
-    paddingVertical: spacing.sm + 2,
-    paddingHorizontal: spacing.xl,
+    borderWidth: 3,
+    borderColor: colors.onPrimary,
     borderRadius: radius.lg,
+    marginBottom: spacing.md,
   },
-  closeText: { color: colors.text, fontWeight: '700' },
+  light: { color: colors.onPrimary },
+  dim: { color: 'rgba(255,255,255,0.75)' },
+  permission: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: spacing.lg, gap: spacing.md },
+  permissionIcon: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: colors.primaryMuted,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  close: { position: 'absolute', right: spacing.md },
 });

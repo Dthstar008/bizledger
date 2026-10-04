@@ -1,236 +1,254 @@
-import { useCallback, useState } from 'react';
-import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
-import { ScreenContainer } from '../src/components/ScreenContainer';
+import { useState } from 'react';
+import { StyleSheet, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { Screen } from '../src/components/Screen';
+import { Section } from '../src/components/Card';
+import { AppText } from '../src/components/AppText';
 import { Button } from '../src/components/Button';
+import { IconButton } from '../src/components/IconButton';
+import { ChipGroup } from '../src/components/Chip';
 import { TextField } from '../src/components/TextField';
+import { ListRow } from '../src/components/ListRow';
+import { Badge } from '../src/components/Badge';
+import { Avatar, ErrorState, InlineError, SkeletonList, confirm } from '../src/components/Feedback';
 import { apiErrorMessage } from '../src/api/client';
 import { createEmployee, listEmployees, removeEmployee } from '../src/api/employees';
 import { createBranch, listBranches } from '../src/api/branches';
-import { Employee } from '../src/api/types';
+import { Branch, Employee } from '../src/api/types';
+import { publish } from '../src/events/bus';
+import { useResource } from '../src/hooks/useResource';
 import { useAuthStore } from '../src/store/auth-store';
+import { isEmail } from '../src/utils/validate';
 import { colors, radius, spacing } from '../src/theme';
-import { useFocusLoad } from '../src/hooks/useFocusLoad';
+
+function StaffForm({ branches, onDone }: { branches: Branch[]; onDone: () => void }) {
+  const defaultBranch = branches.find((b) => b.isDefault)?.id ?? branches[0]?.id;
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [branchId, setBranchId] = useState<string | undefined>(defaultBranch);
+  const [touched, setTouched] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const errors = {
+    name: touched && !name.trim() ? 'Enter their name' : undefined,
+    email: touched && !isEmail(email) ? 'Enter a valid email address' : undefined,
+    password: touched && password.length < 6 ? 'Use at least 6 characters' : undefined,
+  };
+  const valid = !!name.trim() && isEmail(email) && password.length >= 6;
+
+  async function save() {
+    setTouched(true);
+    if (!valid) return;
+    setSaving(true);
+    setError(null);
+    try {
+      await createEmployee({ name: name.trim(), email: email.trim(), password, branchId });
+      publish({ type: 'team.changed' });
+      onDone();
+    } catch (err) {
+      setError(apiErrorMessage(err));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <View style={styles.form}>
+      <AppText variant="caption" tone="muted">
+        Staff can record sales and manage customers, but can't see profit, costs or expenses.
+      </AppText>
+      {error ? <InlineError message={error} /> : null}
+      <TextField label="Name" value={name} onChangeText={setName} placeholder="Ada Okoye" autoCapitalize="words" error={errors.name} />
+      <TextField
+        label="Email"
+        value={email}
+        onChangeText={setEmail}
+        placeholder="ada@example.com"
+        autoCapitalize="none"
+        keyboardType="email-address"
+        error={errors.email}
+      />
+      <TextField
+        label="Password"
+        value={password}
+        onChangeText={setPassword}
+        secureTextEntry
+        secureToggle
+        autoCapitalize="none"
+        helper="At least 6 characters. Share it with them privately."
+        error={errors.password}
+      />
+      {branches.length > 1 ? (
+        <>
+          <AppText variant="label" tone="muted">
+            Works at
+          </AppText>
+          <ChipGroup options={branches.map((b) => ({ value: b.id, label: b.name }))} value={branchId} onChange={setBranchId} />
+        </>
+      ) : null}
+      <View style={styles.row}>
+        <Button label="Cancel" variant="secondary" onPress={onDone} style={styles.flexButton} />
+        <Button label="Create account" icon="checkmark" onPress={save} loading={saving} style={styles.flexButton} />
+      </View>
+    </View>
+  );
+}
+
+function BranchForm({ onDone }: { onDone: () => void }) {
+  const setBranches = useAuthStore((s) => s.setBranches);
+  const [name, setName] = useState('');
+  const [address, setAddress] = useState('');
+  const [touched, setTouched] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function save() {
+    setTouched(true);
+    if (!name.trim()) return;
+    setSaving(true);
+    setError(null);
+    try {
+      await createBranch({ name: name.trim(), address: address.trim() || undefined });
+      setBranches(await listBranches());
+      publish({ type: 'team.changed' });
+      onDone();
+    } catch (err) {
+      setError(apiErrorMessage(err));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <View style={styles.form}>
+      {error ? <InlineError message={error} /> : null}
+      <TextField
+        label="Branch name"
+        value={name}
+        onChangeText={setName}
+        placeholder="Lekki branch"
+        autoCapitalize="words"
+        error={touched && !name.trim() ? 'Enter a name for the branch' : undefined}
+      />
+      <TextField label="Address (optional)" value={address} onChangeText={setAddress} placeholder="12 Admiralty Way, Lekki" />
+      <View style={styles.row}>
+        <Button label="Cancel" variant="secondary" onPress={onDone} style={styles.flexButton} />
+        <Button label="Add branch" icon="checkmark" onPress={save} loading={saving} style={styles.flexButton} />
+      </View>
+    </View>
+  );
+}
 
 export default function TeamScreen() {
   const branches = useAuthStore((s) => s.branches);
   const setBranches = useAuthStore((s) => s.setBranches);
-  const [employees, setEmployees] = useState<Employee[]>([]);
-  const [loading, setLoading] = useState(false);
-
-  const [branchName, setBranchName] = useState('');
-  const [branchAddress, setBranchAddress] = useState('');
-  const [addingBranch, setAddingBranch] = useState(false);
-
-  const [showStaffForm, setShowStaffForm] = useState(false);
-  const [staffName, setStaffName] = useState('');
-  const [staffEmail, setStaffEmail] = useState('');
-  const [staffPassword, setStaffPassword] = useState('');
-  const [staffBranchId, setStaffBranchId] = useState<string | undefined>(undefined);
   const [addingStaff, setAddingStaff] = useState(false);
+  const [addingBranch, setAddingBranch] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const team = useResource(async () => {
+    const [employees, brs] = await Promise.all([listEmployees(), listBranches()]);
+    setBranches(brs);
+    return employees;
+  }, ['team.changed']);
+
+  const branchName = (id: string | null) => branches.find((b) => b.id === id)?.name ?? 'No branch';
+
+  async function remove(e: Employee) {
+    const who = e.name ?? e.email;
+    const ok = await confirm({
+      title: `Remove ${who}?`,
+      message: 'They will lose access to this business immediately. Sales they recorded stay in your records.',
+      confirmLabel: 'Remove',
+      destructive: true,
+    });
+    if (!ok) return;
+    setError(null);
     try {
-      const [emps, brs] = await Promise.all([listEmployees(), listBranches()]);
-      setEmployees(emps);
-      setBranches(brs);
+      await removeEmployee(e.id);
+      publish({ type: 'team.changed' });
     } catch (err) {
-      Alert.alert('Could not load team', apiErrorMessage(err));
-    } finally {
-      setLoading(false);
-    }
-  }, [setBranches]);
-
-  useFocusLoad(load);
-
-  const branchName_ = (id: string | null) => branches.find((b) => b.id === id)?.name ?? 'No branch';
-
-  async function handleAddBranch() {
-    setAddingBranch(true);
-    try {
-      await createBranch({ name: branchName.trim(), address: branchAddress.trim() || undefined });
-      setBranchName('');
-      setBranchAddress('');
-      await load();
-    } catch (err) {
-      Alert.alert('Could not add branch', apiErrorMessage(err));
-    } finally {
-      setAddingBranch(false);
+      setError(apiErrorMessage(err));
     }
   }
 
-  async function handleAddStaff() {
-    setAddingStaff(true);
-    try {
-      await createEmployee({
-        name: staffName.trim(),
-        email: staffEmail.trim(),
-        password: staffPassword,
-        branchId: staffBranchId,
-      });
-      setStaffName('');
-      setStaffEmail('');
-      setStaffPassword('');
-      setShowStaffForm(false);
-      await load();
-    } catch (err) {
-      Alert.alert('Could not add staff', apiErrorMessage(err));
-    } finally {
-      setAddingStaff(false);
-    }
+  if (team.loading) {
+    return (
+      <Screen edges={[]}>
+        <SkeletonList rows={5} />
+      </Screen>
+    );
+  }
+  if (!team.data) {
+    return (
+      <Screen edges={[]}>
+        <ErrorState message={team.error ?? 'Your team could not be loaded.'} onRetry={team.retry} />
+      </Screen>
+    );
   }
 
-  function confirmRemove(e: Employee) {
-    Alert.alert('Remove staff member?', `${e.name ?? e.email} will lose access immediately.`, [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Remove',
-        style: 'destructive',
-        onPress: async () => {
-          try {
-            await removeEmployee(e.id);
-            await load();
-          } catch (err) {
-            Alert.alert('Could not remove', apiErrorMessage(err));
-          }
-        },
-      },
-    ]);
-  }
-
-  const canAddStaff = staffName.trim() && staffEmail.trim() && staffPassword.length >= 6;
+  const employees = team.data;
+  const staffCount = employees.filter((e) => e.role === 'staff').length;
 
   return (
-    <ScreenContainer refreshing={loading} onRefresh={load}>
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Branches</Text>
-        {branches.map((b) => (
-          <View key={b.id} style={styles.row}>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.rowTitle}>{b.name}</Text>
-              {b.address ? <Text style={styles.muted}>{b.address}</Text> : null}
-            </View>
-            {b.isDefault ? <Text style={styles.badge}>Default</Text> : null}
-          </View>
-        ))}
-        <TextField label="New branch name" value={branchName} onChangeText={setBranchName} placeholder="Lekki Branch" />
-        <TextField label="Address (optional)" value={branchAddress} onChangeText={setBranchAddress} />
-        <Button label="Add branch" onPress={handleAddBranch} loading={addingBranch} disabled={!branchName.trim()} />
-      </View>
+    <Screen edges={[]} refreshing={team.refreshing} onRefresh={team.reload}>
+      {error ? <InlineError message={error} /> : null}
+      {team.error ? <InlineError message={team.error} onRetry={team.reload} /> : null}
 
-      <View style={styles.section}>
-        <View style={styles.headerRow}>
-          <Text style={styles.sectionTitle}>Team</Text>
-          <Button
-            label={showStaffForm ? 'Cancel' : 'Add staff'}
-            variant="secondary"
-            onPress={() => setShowStaffForm((v) => !v)}
+      <Section
+        title="Team"
+        description={staffCount === 0 ? 'Give staff their own login to record sales' : `${staffCount} staff member${staffCount === 1 ? '' : 's'}`}
+        action={!addingStaff ? <Button label="Add staff" icon="person-add-outline" size="sm" variant="ghost" onPress={() => setAddingStaff(true)} /> : null}
+      >
+        {addingStaff ? <StaffForm branches={branches} onDone={() => setAddingStaff(false)} /> : null}
+        {employees.map((e, i) => (
+          <ListRow
+            key={e.id}
+            title={e.name ?? e.email}
+            subtitle={e.role === 'owner' ? e.email : `${e.email} · ${branchName(e.branchId)}`}
+            leading={<Avatar name={e.name ?? e.email} />}
+            trailing={
+              e.role === 'owner' ? (
+                <Badge label="Owner" tone="success" />
+              ) : (
+                <IconButton icon="trash-outline" tone="danger" accessibilityLabel={`Remove ${e.name ?? e.email}`} onPress={() => remove(e)} />
+              )
+            }
+            last={i === employees.length - 1}
           />
-        </View>
-
-        {showStaffForm && (
-          <View style={styles.form}>
-            <Text style={styles.muted}>
-              Staff can record sales and manage customers, but can't see profit, costs or expenses.
-            </Text>
-            <TextField label="Name" value={staffName} onChangeText={setStaffName} placeholder="Ada Okoye" />
-            <TextField
-              label="Email"
-              value={staffEmail}
-              onChangeText={setStaffEmail}
-              autoCapitalize="none"
-              keyboardType="email-address"
-            />
-            <TextField
-              label="Password (min 6 characters)"
-              value={staffPassword}
-              onChangeText={setStaffPassword}
-              secureTextEntry
-              autoCapitalize="none"
-            />
-            <Text style={styles.label}>Works at</Text>
-            <View style={styles.chipRow}>
-              {branches.map((b) => {
-                const selected = (staffBranchId ?? branches.find((x) => x.isDefault)?.id) === b.id;
-                return (
-                  <Pressable
-                    key={b.id}
-                    onPress={() => setStaffBranchId(b.id)}
-                    style={[styles.chip, selected && styles.chipActive]}
-                  >
-                    <Text style={[styles.chipText, selected && styles.chipTextActive]}>{b.name}</Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-            <Button label="Create staff account" onPress={handleAddStaff} loading={addingStaff} disabled={!canAddStaff} />
-          </View>
-        )}
-
-        {employees.map((e) => (
-          <View key={e.id} style={styles.row}>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.rowTitle}>{e.name ?? e.email}</Text>
-              <Text style={styles.muted}>
-                {e.email} · {e.role === 'owner' ? 'Owner' : branchName_(e.branchId)}
-              </Text>
-            </View>
-            {e.role === 'staff' ? (
-              <Pressable onPress={() => confirmRemove(e)}>
-                <Text style={styles.remove}>Remove</Text>
-              </Pressable>
-            ) : (
-              <Text style={styles.badge}>Owner</Text>
-            )}
-          </View>
         ))}
-      </View>
-    </ScreenContainer>
+      </Section>
+
+      <Section
+        title="Branches"
+        description="Sales, stock and expenses can be tracked per branch"
+        action={!addingBranch ? <Button label="Add branch" icon="add" size="sm" variant="ghost" onPress={() => setAddingBranch(true)} /> : null}
+      >
+        {addingBranch ? <BranchForm onDone={() => setAddingBranch(false)} /> : null}
+        {branches.map((b, i) => (
+          <ListRow
+            key={b.id}
+            title={b.name}
+            subtitle={b.address || undefined}
+            leading={
+              <View style={styles.icon}>
+                <Ionicons name="storefront-outline" size={20} color={colors.primary} />
+              </View>
+            }
+            trailing={b.isDefault ? <Badge label="Main" /> : null}
+            last={i === branches.length - 1}
+          />
+        ))}
+      </Section>
+    </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  section: {
-    backgroundColor: colors.surface,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: spacing.md,
-    gap: spacing.sm,
-  },
-  sectionTitle: { fontSize: 15, fontWeight: '700', color: colors.text },
-  headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    paddingVertical: spacing.xs,
-  },
-  rowTitle: { color: colors.text, fontWeight: '600' },
-  muted: { color: colors.textMuted, fontSize: 13 },
-  label: { color: colors.textMuted, fontSize: 14 },
-  badge: {
-    color: colors.primary,
-    backgroundColor: colors.primaryMuted,
-    paddingVertical: 2,
-    paddingHorizontal: spacing.sm,
-    borderRadius: radius.sm,
-    fontSize: 12,
-    fontWeight: '700',
-    overflow: 'hidden',
-  },
-  remove: { color: colors.danger, fontWeight: '600' },
-  form: { gap: spacing.sm },
-  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
-  chip: {
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-  },
-  chipActive: { backgroundColor: colors.primaryMuted, borderColor: colors.primary },
-  chipText: { color: colors.text, fontSize: 13 },
-  chipTextActive: { color: colors.primary, fontWeight: '700' },
+  form: { gap: spacing.md, paddingBottom: spacing.sm },
+  row: { flexDirection: 'row', gap: spacing.sm },
+  flexButton: { flex: 1, alignSelf: 'auto' },
+  icon: { width: 40, height: 40, borderRadius: radius.md, backgroundColor: colors.primaryMuted, alignItems: 'center', justifyContent: 'center' },
 });

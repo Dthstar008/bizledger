@@ -152,7 +152,6 @@ export default function ProductDetailScreen() {
   return (
     <Screen edges={[]} refreshing={product.refreshing} onRefresh={product.reload}>
       <Stack.Screen options={{ title: p.name }} />
-      {error ? <InlineError message={error} /> : null}
 
       <Card style={styles.hero}>
         <ProductImage product={p} size={112} />
@@ -211,6 +210,7 @@ export default function ProductDetailScreen() {
         </Section>
       ) : null}
 
+      {error ? <InlineError message={error} /> : null}
       {isOwner ? (
         <Button label="Delete product" icon="trash-outline" variant="destructive" onPress={remove} loading={deleting} style={styles.delete} />
       ) : null}

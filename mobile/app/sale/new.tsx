@@ -18,7 +18,7 @@ import { listCustomers } from '../../src/api/customers';
 import { createSale } from '../../src/api/sales';
 import { apiErrorMessage } from '../../src/api/client';
 import { Customer, PaymentMethod, Product, TransactionChannel } from '../../src/api/types';
-import { publish } from '../../src/events/bus';
+import { publish, useEvent } from '../../src/events/bus';
 import { goBack } from '../../src/utils/navigation';
 import { useResource } from '../../src/hooks/useResource';
 import { useAuthStore } from '../../src/store/auth-store';
@@ -78,6 +78,11 @@ export default function NewSaleScreen() {
   const [amountPaid, setAmountPaid] = useState('');
   const [reference, setReference] = useState('');
   const [editing, setEditing] = useState<string | null>(null);
+
+  // A customer added from this screen ("New") is the one being sold to.
+  useEvent(['customer.changed'], (e) => {
+    if (e.type === 'customer.changed' && e.change === 'created') setCustomerId(e.customerId);
+  });
   const [priceInput, setPriceInput] = useState('');
   const [scanning, setScanning] = useState(false);
   const [submitting, setSubmitting] = useState(false);

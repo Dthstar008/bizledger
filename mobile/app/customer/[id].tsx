@@ -1,273 +1,257 @@
-import { useCallback, useState } from 'react';
-import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
-import { useLocalSearchParams } from 'expo-router';
-import { ScreenContainer } from '../../src/components/ScreenContainer';
+import { useState } from 'react';
+import { Linking, StyleSheet, View } from 'react-native';
+import { router, Stack, useLocalSearchParams } from 'expo-router';
+import { Screen } from '../../src/components/Screen';
+import { Card, Section } from '../../src/components/Card';
+import { AppText } from '../../src/components/AppText';
 import { Button } from '../../src/components/Button';
+import { ChipGroup } from '../../src/components/Chip';
 import { TextField } from '../../src/components/TextField';
-import { addRepayment, getCustomer } from '../../src/api/customers';
+import { Badge } from '../../src/components/Badge';
+import { ListRow } from '../../src/components/ListRow';
+import { StatCard, StatGrid } from '../../src/components/StatCard';
+import { ActivityItem } from '../../src/components/ActivityItem';
+import { Avatar, ErrorState, InlineError, Skeleton, SkeletonList, confirm } from '../../src/components/Feedback';
+import { addRepayment, deleteCustomer, getCustomer } from '../../src/api/customers';
+import { listLedgerEvents } from '../../src/api/ledger';
 import { apiErrorMessage } from '../../src/api/client';
 import { CustomerDetail, TransactionChannel } from '../../src/api/types';
+import { publish } from '../../src/events/bus';
+import { useResource } from '../../src/hooks/useResource';
+import { useTeamNames } from '../../src/hooks/useTeamNames';
+import { selectIsOwner, useAuthStore } from '../../src/store/auth-store';
 import { formatNaira } from '../../src/utils/currency';
-import { useAuthStore } from '../../src/store/auth-store';
+import { formatDate, relativeTime } from '../../src/utils/format';
+import { goBack } from '../../src/utils/navigation';
+import { parseAmount } from '../../src/utils/validate';
 import { buildDebtReminderText, openWhatsApp } from '../../src/utils/whatsapp';
-import { colors, radius, spacing } from '../../src/theme';
-import { useFocusLoad } from '../../src/hooks/useFocusLoad';
+import { colors, spacing } from '../../src/theme';
 
-const REPAYMENT_CHANNELS: { value: TransactionChannel; label: string }[] = [
+const CHANNELS: { value: TransactionChannel; label: string }[] = [
   { value: 'cash', label: 'Cash' },
-  { value: 'bank_transfer', label: 'Bank transfer' },
+  { value: 'bank_transfer', label: 'Transfer' },
+  { value: 'pos', label: 'POS' },
   { value: 'opay', label: 'OPay' },
   { value: 'palmpay', label: 'PalmPay' },
-  { value: 'pos', label: 'POS' },
   { value: 'other', label: 'Other' },
 ];
+const channelLabel = (c: TransactionChannel) => CHANNELS.find((x) => x.value === c)?.label ?? c;
 
-export default function CustomerDetailScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
-  const businessName = useAuthStore((s) => s.business?.name ?? 'Your business');
-  const [customer, setCustomer] = useState<CustomerDetail | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [repaymentAmount, setRepaymentAmount] = useState('');
-  const [repaymentChannel, setRepaymentChannel] = useState<TransactionChannel>('cash');
-  const [submitting, setSubmitting] = useState(false);
+function RepaymentForm({ customer, onDone }: { customer: CustomerDetail; onDone: () => void }) {
+  const [channel, setChannel] = useState<TransactionChannel>('cash');
+  const [amount, setAmount] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const value = parseAmount(amount);
+  const balance = customer.outstandingBalance;
+  const invalid = value === null || value <= 0 ? 'Enter the amount received' : value > balance ? `They only owe ${formatNaira(balance)}` : null;
 
-  const load = useCallback(async () => {
-    if (!id) return;
-    setLoading(true);
+  async function save() {
+    if (invalid || value === null) return;
+    setSaving(true);
+    setError(null);
     try {
-      setCustomer(await getCustomer(id));
+      await addRepayment(customer.id, { amount: value, channel });
+      publish({ type: 'payment.received', customerId: customer.id, amount: value });
+      onDone();
     } catch (err) {
-      Alert.alert('Could not load customer', apiErrorMessage(err));
+      setError(apiErrorMessage(err));
     } finally {
-      setLoading(false);
+      setSaving(false);
     }
-  }, [id]);
-
-  useFocusLoad(load);
-
-  async function handleRepayment() {
-    if (!id) return;
-    setSubmitting(true);
-    try {
-      await addRepayment(id, { amount: parseFloat(repaymentAmount), channel: repaymentChannel });
-      setRepaymentAmount('');
-      load();
-    } catch (err) {
-      Alert.alert('Could not record repayment', apiErrorMessage(err));
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  if (!customer) {
-    return (
-      <ScreenContainer refreshing={loading} onRefresh={load}>
-        <Text style={styles.muted}>{loading ? 'Loading…' : 'Customer not found'}</Text>
-      </ScreenContainer>
-    );
   }
 
   return (
-    <ScreenContainer refreshing={loading} onRefresh={load}>
-      <View style={styles.header}>
-        <Text style={styles.name}>{customer.name}</Text>
-        {customer.phone ? <Text style={styles.muted}>{customer.phone}</Text> : null}
+    <View style={styles.form}>
+      {error ? <InlineError message={error} /> : null}
+      <AppText variant="label" tone="muted">
+        Received by
+      </AppText>
+      <ChipGroup options={CHANNELS} value={channel} onChange={setChannel} />
+      <TextField
+        label="Amount received"
+        prefix="₦"
+        value={amount}
+        onChangeText={setAmount}
+        keyboardType="numeric"
+        placeholder={String(balance)}
+        error={amount && invalid ? invalid : undefined}
+        helper={!invalid && value !== null ? `Balance after this: ${formatNaira(balance - value)}` : undefined}
+      />
+      <Button label={`Fill full balance (${formatNaira(balance)})`} size="sm" variant="ghost" onPress={() => setAmount(String(balance))} />
+      <View style={styles.row}>
+        <Button label="Cancel" variant="secondary" onPress={onDone} style={styles.flexButton} />
+        <Button label="Save" icon="checkmark" onPress={save} loading={saving} disabled={!!invalid} style={styles.flexButton} />
       </View>
+    </View>
+  );
+}
 
-      <View style={styles.balanceCard}>
-        <Text style={styles.balanceLabel}>Outstanding</Text>
-        <Text style={styles.balanceValue}>{formatNaira(customer.outstandingBalance)}</Text>
-      </View>
+export default function CustomerDetailScreen() {
+  const { id } = useLocalSearchParams<{ id: string }>();
+  const isOwner = useAuthStore(selectIsOwner);
+  const businessName = useAuthStore((s) => s.business?.name ?? 'Your business');
+  const actorName = useTeamNames();
+  const [repaying, setRepaying] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-      {customer.outstandingBalance > 0 && (
-        <Button
-          label="Send debt reminder on WhatsApp"
-          variant="secondary"
-          onPress={() =>
-            openWhatsApp(
-              buildDebtReminderText(businessName, customer.name, customer.outstandingBalance),
-              customer.phone,
-            )
-          }
-        />
-      )}
+  const events = ['customer.changed', 'payment.received', 'sale.completed'] as const;
+  const customer = useResource(() => getCustomer(id), [...events], [id]);
+  const activity = useResource(
+    () => (isOwner ? listLedgerEvents({ entity: 'customer', entityId: id, limit: 20 }) : Promise.resolve([])),
+    [...events],
+    [id, isOwner],
+  );
 
-      {customer.outstandingBalance > 0 && (
-        <View style={styles.form}>
-          <Text style={styles.sectionTitle}>Record a repayment</Text>
-          <Text style={styles.formLabel}>Received via</Text>
-          <View style={styles.chipRow}>
-            {REPAYMENT_CHANNELS.map((c) => (
-              <Pressable
-                key={c.value}
-                onPress={() => setRepaymentChannel(c.value)}
-                style={[styles.chip, repaymentChannel === c.value && styles.chipActive]}
-              >
-                <Text style={[styles.chipText, repaymentChannel === c.value && styles.chipTextActive]}>{c.label}</Text>
-              </Pressable>
-            ))}
+  async function remove() {
+    const c = customer.data;
+    if (!c) return;
+    const ok = await confirm({
+      title: `Delete ${c.name}?`,
+      message: 'This removes them from your customer list.',
+      confirmLabel: 'Delete',
+      destructive: true,
+    });
+    if (!ok) return;
+    setDeleting(true);
+    setError(null);
+    try {
+      await deleteCustomer(c.id);
+      publish({ type: 'customer.changed', customerId: c.id, change: 'deleted' });
+      goBack('/(tabs)/customers');
+    } catch (err) {
+      setError(apiErrorMessage(err));
+    } finally {
+      setDeleting(false);
+    }
+  }
+
+  if (customer.loading) {
+    return (
+      <Screen edges={[]}>
+        <Skeleton height={140} />
+        <SkeletonList rows={3} />
+      </Screen>
+    );
+  }
+  const c = customer.data;
+  if (!c) {
+    return (
+      <Screen edges={[]}>
+        <ErrorState message={customer.error ?? 'This customer could not be loaded.'} onRetry={customer.retry} />
+      </Screen>
+    );
+  }
+
+  const owes = c.outstandingBalance > 0;
+  const summary = c.purchaseSummary;
+  const openCredit = c.creditSales.filter((s) => s.paymentStatus !== 'paid');
+  const edit = () => router.push({ pathname: '/customer/form', params: { id: c.id } });
+
+  return (
+    <Screen edges={[]} refreshing={customer.refreshing} onRefresh={customer.reload}>
+      <Stack.Screen options={{ title: c.name }} />
+
+      <Card style={styles.hero}>
+        <View style={styles.identity}>
+          <Avatar name={c.name} size={56} />
+          <View style={styles.flex}>
+            <AppText variant="title">{c.name}</AppText>
+            <AppText variant="caption" tone="muted">
+              {[c.phone || 'No phone number', c.createdAt ? `Customer since ${formatDate(c.createdAt, { month: 'short', year: 'numeric' })}` : null]
+                .filter(Boolean)
+                .join(' · ')}
+            </AppText>
           </View>
-          <TextField
-            label="Amount (₦)"
-            value={repaymentAmount}
-            onChangeText={setRepaymentAmount}
-            keyboardType="numeric"
-            placeholder="5000"
-          />
-          <Button
-            label="Save repayment"
-            onPress={handleRepayment}
-            loading={submitting}
-            disabled={
-              !repaymentAmount || parseFloat(repaymentAmount) <= 0 || parseFloat(repaymentAmount) > customer.outstandingBalance
-            }
-          />
         </View>
-      )}
+        <View style={styles.row}>
+          {c.phone ? (
+            <>
+              <Button label="Call" icon="call-outline" size="sm" variant="secondary" onPress={() => Linking.openURL(`tel:${c.phone}`)} style={styles.flexButton} />
+              <Button label="WhatsApp" icon="logo-whatsapp" size="sm" variant="secondary" onPress={() => openWhatsApp(`Hello ${c.name}, `, c.phone)} style={styles.flexButton} />
+            </>
+          ) : null}
+          <Button label="Edit" icon="create-outline" size="sm" variant="secondary" onPress={edit} style={styles.flexButton} />
+        </View>
+      </Card>
 
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Credit history</Text>
-        {customer.creditSales.length === 0 ? (
-          <Text style={styles.muted}>No credit sales yet.</Text>
-        ) : (
-          customer.creditSales.map((sale) => (
-            <View key={sale.id} style={styles.creditSaleRow}>
-              <View style={styles.rowBetween}>
-                <Text style={styles.rowLabel}>{new Date(sale.createdAt).toLocaleDateString()}</Text>
-                <Text style={styles.rowValueNegative}>+{formatNaira(sale.creditAmount)}</Text>
+      <StatGrid>
+        <StatCard label="Owes you" value={owes ? formatNaira(c.outstandingBalance) : 'Nothing'} tone={owes ? 'negative' : 'default'} icon="alert-circle-outline" />
+        <StatCard label="Total spent" value={formatNaira(summary.totalSpent)} icon="cash-outline" />
+        <StatCard label="Purchases" value={String(summary.saleCount)} icon="receipt-outline" />
+        <StatCard label="Last purchase" value={summary.lastPurchaseAt ? relativeTime(summary.lastPurchaseAt) : 'None yet'} icon="time-outline" />
+      </StatGrid>
+
+      {owes ? (
+        <Section title="Outstanding balance" description={`${openCredit.length} credit sale${openCredit.length === 1 ? '' : 's'} not fully paid`}>
+          {repaying ? (
+            <RepaymentForm customer={c} onDone={() => setRepaying(false)} />
+          ) : (
+            <>
+              <AppText variant="metric" style={styles.owed}>
+                {formatNaira(c.outstandingBalance)}
+              </AppText>
+              <View style={styles.row}>
+                <Button label="Record repayment" icon="cash-outline" onPress={() => setRepaying(true)} style={styles.flexButton} />
+                <Button
+                  label="Remind"
+                  icon="logo-whatsapp"
+                  variant="secondary"
+                  onPress={() => openWhatsApp(buildDebtReminderText(businessName, c.name, c.outstandingBalance), c.phone)}
+                  style={styles.flexButton}
+                />
               </View>
-              <Text style={sale.paymentStatus === 'paid' ? styles.saleStatusPaid : styles.saleStatusOpen}>
-                {sale.paymentStatus === 'paid'
-                  ? 'Paid off'
-                  : sale.paymentStatus === 'partially_paid'
-                    ? `${formatNaira(sale.outstandingBalance)} still owed`
-                    : 'Nothing paid yet'}
-              </Text>
-            </View>
-          ))
-        )}
-      </View>
+              {openCredit.map((s, i) => (
+                <ListRow
+                  key={s.id}
+                  title={`${formatNaira(s.outstandingBalance)} left of ${formatNaira(s.creditAmount)}`}
+                  subtitle={`Credit sale · ${formatDate(s.createdAt)}`}
+                  trailing={<Badge label={s.paymentStatus === 'partially_paid' ? 'Part paid' : 'Unpaid'} tone="warning" />}
+                  last={i === openCredit.length - 1}
+                />
+              ))}
+            </>
+          )}
+        </Section>
+      ) : null}
 
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Repayments</Text>
-        {customer.repayments.length === 0 ? (
-          <Text style={styles.muted}>No repayments yet.</Text>
-        ) : (
-          customer.repayments.map((r) => (
-            <View key={r.id} style={styles.rowBetween}>
-              <Text style={styles.rowLabel}>
-                {new Date(r.createdAt).toLocaleDateString()} · {REPAYMENT_CHANNELS.find((c) => c.value === r.channel)?.label ?? r.channel}
-              </Text>
-              <Text style={styles.rowValuePositive}>-{formatNaira(r.amount)}</Text>
-            </View>
-          ))
-        )}
-      </View>
-    </ScreenContainer>
+      {isOwner ? (
+        <Section title="Activity" description="Purchases, credit, repayments and edits">
+          {activity.loading ? (
+            <Skeleton height={60} />
+          ) : (activity.data ?? []).length === 0 ? (
+            <AppText tone="muted">Nothing recorded yet.</AppText>
+          ) : (
+            (activity.data ?? []).map((e, i, arr) => <ActivityItem key={e.id} event={e} actorName={actorName} last={i === arr.length - 1} />)
+          )}
+        </Section>
+      ) : c.repayments.length > 0 ? (
+        <Section title="Repayments">
+          {c.repayments.map((r, i) => (
+            <ListRow
+              key={r.id}
+              title={formatNaira(r.amount)}
+              subtitle={`${channelLabel(r.channel)} · ${formatDate(r.createdAt)}`}
+              last={i === c.repayments.length - 1}
+            />
+          ))}
+        </Section>
+      ) : null}
+
+      {error ? <InlineError message={error} /> : null}
+      {isOwner ? <Button label="Delete customer" icon="trash-outline" variant="destructive" onPress={remove} loading={deleting} style={styles.delete} /> : null}
+    </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  header: {
-    gap: spacing.xs,
-  },
-  name: {
-    fontSize: 22,
-    fontWeight: '700',
-    color: colors.text,
-  },
-  muted: {
-    color: colors.textMuted,
-  },
-  balanceCard: {
-    backgroundColor: colors.dangerMuted,
-    borderRadius: radius.md,
-    padding: spacing.md,
-    gap: spacing.xs,
-  },
-  balanceLabel: {
-    color: colors.textMuted,
-    fontSize: 13,
-  },
-  balanceValue: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: colors.danger,
-  },
-  form: {
-    backgroundColor: colors.surface,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: spacing.md,
-    gap: spacing.sm,
-  },
-  section: {
-    backgroundColor: colors.surface,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: spacing.md,
-    gap: spacing.sm,
-  },
-  sectionTitle: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: colors.text,
-  },
-  rowBetween: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  rowLabel: {
-    color: colors.textMuted,
-  },
-  rowValueNegative: {
-    color: colors.danger,
-    fontWeight: '600',
-  },
-  rowValuePositive: {
-    color: colors.primary,
-    fontWeight: '600',
-  },
-  creditSaleRow: {
-    gap: 2,
-  },
-  saleStatusPaid: {
-    fontSize: 12,
-    color: colors.primary,
-  },
-  saleStatusOpen: {
-    fontSize: 12,
-    color: colors.warning,
-  },
-  formLabel: {
-    fontSize: 13,
-    color: colors.textMuted,
-  },
-  chipRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.sm,
-  },
-  chip: {
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
-    borderRadius: radius.sm,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-  },
-  chipActive: {
-    backgroundColor: colors.primaryMuted,
-    borderColor: colors.primary,
-  },
-  chipText: {
-    fontSize: 13,
-    color: colors.textMuted,
-  },
-  chipTextActive: {
-    color: colors.primary,
-    fontWeight: '600',
-  },
+  hero: { gap: spacing.md },
+  identity: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  flex: { flex: 1, gap: spacing.xxs },
+  row: { flexDirection: 'row', gap: spacing.sm, flexWrap: 'wrap' },
+  flexButton: { flex: 1, alignSelf: 'auto', minWidth: 96 },
+  form: { gap: spacing.md },
+  owed: { color: colors.danger },
+  delete: { alignSelf: 'center' },
 });
