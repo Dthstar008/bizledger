@@ -1,8 +1,8 @@
 # Event Log
 
-A dated record of what happened on this project from September 22, 2026
-(when the security/production-hardening pass began) through the hackathon
-deadline. Sourced from git history in both repos this project has lived in
+A dated record of what happened on this project from September 21, 2026
+(the technical plan) onward, including the post-deadline UI/UX revamp.
+Sourced from git history in both repos this project has lived in
 (`financial-os-ng`, then renamed to `bizledger`) plus the build and
 deployment record.
 
@@ -150,3 +150,79 @@ deployment record.
 
 - Confirmed from the phone that `/health` is reachable and the app works
   end-to-end against the hosted Render API.
+- Ran a security review (dependencies, auth, authorization/IDOR, every raw
+  SQL query, secrets, on-device storage). No injection or cross-business
+  access found; the open items (auth rate limiting, password policy, token
+  storage, security headers, rotating the Render DB password) went into
+  `PRODUCTION_TODO.md`.
+
+## September 29 — Cold starts, then the revamp begins
+
+- **Render free-tier cold starts**: the hosted API sleeps after inactivity
+  and the first request took long enough to look like a failure. Fixed on
+  the app side: it detects a sleeping server, shows a "waking up the
+  server" banner, and retries instead of erroring.
+- Started a **production-grade UI/UX revamp** from a written brief: keep
+  the green identity, existing features, API contracts and security, but
+  add a design system, onboarding, editable records, product photos,
+  loading/empty/error states, and richer analytics. Decisions taken with
+  the user up front: product photos stored in the database, customers and
+  expenses editable with safe deletes, no new product description/category
+  fields.
+- **Course correction during planning**: the user asked to keep the app
+  *event-based, not screen-based*. The plan was rewritten around that:
+  every write records a ledger event in the same transaction, history
+  screens read the event stream, and the mobile app gets its own event bus
+  so screens refresh when something they show changes, not on every visit.
+- **Backend (phase 1)**: closed every write path that recorded no event
+  (customer create, product edits, stock edits) and added edit/delete for
+  products, customers and expenses, each with its own event carrying the
+  entity id and who did it. Added product photos (`product_images` table,
+  2 MB cap, JPEG/PNG/WebP checked by file signature, not just the declared
+  type), `GET /ledger/events` filters for one product/customer/expense/sale
+  with paging, and analytics by day/week/month with expenses, slow movers,
+  customer insights and stock movement. Migration verified in a scratch
+  schema first; a live end-to-end script confirmed every write produces
+  exactly one matching event and refused writes produce none (55/55
+  checks). That script caught a `uuid = text` SQL error the unit tests
+  couldn't. 59 backend tests passing.
+- **Outage found during testing**: the dashboard returned 500
+  (`EMAXCONNSESSION`). Supabase's free session pooler allows 15
+  connections, and the local and Render servers each defaulted to a pool of
+  20 against the same database. Default pool size lowered to 5.
+- **Mobile (phases 2–4)**: a design system (type scale, spacing, buttons,
+  cards, fields with password reveal, chips, badges, skeletons, empty and
+  error states, toasts driven by events), a 3-slide onboarding, redesigned
+  login and registration, and a new dashboard (time-based greeting with
+  the user's name, key metrics, 7-day chart, insights, recent activity,
+  logout behind a confirmation). Full analytics screen and an activity
+  feed grouped by day.
+
+## October 4 — Revamp finished
+
+- **Sales**: today/this-month summary, search and filters, and a faster new
+  sale screen (search, quantity steppers, scan, price edits, credit
+  balance, sticky total). Screens that need a session now send signed-out
+  users to login instead of showing errors.
+- **Inventory**: search and stock filters, product detail with stock
+  adjustments (with a reason), stock history from the ledger, edit, and a
+  delete that's refused politely when the product has sales. One form for
+  creating and editing, with camera/library photos resized on the phone
+  before upload.
+- **Customers, expenses, team**: customer detail with call/WhatsApp,
+  purchase summary, repayments checked against the balance, and an
+  activity history; expenses with monthly and category summaries and a
+  history per expense; team and branches moved onto the new components.
+- **Time zone bug found while testing**: events created seconds earlier
+  showed "1 h ago". The database fills timestamps in UTC but the server
+  read them as local time, so on a Lagos machine everything was an hour
+  off, along with date-range filters. Fixed for any host time zone; the
+  UTC Render host was unaffected.
+- **Final audit** at 360, 768 and 1024 px widths in Expo web: fixed price
+  fields overflowing at 360 px, names being cut off in lists, and expenses
+  shown in red when zero. Added the image-picker plugin and permission
+  text to `app.json`, set the Android icon background to the brand mint,
+  and aligned five Expo packages with SDK 57's expected versions
+  (expo-doctor 21/21).
+- Queued a new Android preview build on EAS, needed because photo picking
+  and charts add native modules.

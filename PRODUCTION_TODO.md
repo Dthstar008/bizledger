@@ -17,10 +17,10 @@ Status key: ✅ done · ⚠️ todo · ➖ not applicable to this product shape
 | 7 | Social preview image | No web pages to share links to | ➖ N/A |
 | 8 | Favicon | Mobile app icon/splash assets already exist (`mobile/assets/`, wired in `app.json`) | ✅ Done |
 | 9 | Sitemap + robots.txt | No public web pages to crawl | ➖ N/A |
-| 10 | Alt text on images | Mobile equivalent is `accessibilityLabel` on interactive elements — not audited | ⚠️ Not done |
-| 11 | Compress your images | API responses are gzip-compressed (see README "Performance"). App icon assets are the standard Expo-generated sizes, not separately optimized | ✅ API done · ⚠️ assets not audited |
-| 12 | Check page load speed | Mobile equivalent: app startup time and API latency. API round-trip count and connection pooling already tuned this session (see README "Performance") | ✅ API done · ⚠️ mobile cold-start not measured |
-| 13 | Fix color contrast | Mobile UI theme (`mobile/src/theme.ts`) hasn't been run through a contrast checker | ⚠️ Not audited |
+| 10 | Alt text on images | Mobile equivalent is `accessibilityLabel`. Icon-only buttons now require one (`IconButton` won't compile without it), list rows and buttons are labelled by their text, product images say whose photo they are (or that there is none), charts carry a label, and the decorative brand mark is hidden from screen readers. Not yet tried with TalkBack/VoiceOver on a device | ✅ Labels done · ⚠️ screen-reader pass not done |
+| 11 | Compress your images | API responses are gzip-compressed (see README "Performance"). Product photos are resized to 800 px JPEG (quality 0.7) on the phone before upload and capped at 2 MB server-side. App icon assets are the standard Expo-generated sizes, not separately optimized | ✅ API and photos done · ⚠️ icon assets not audited |
+| 12 | Check page load speed | Mobile equivalent: app startup time and API latency. API round-trip count and connection pooling tuned (see README "Performance"). Render's free tier sleeps when idle; the app detects this, shows a "waking up the server" banner and retries. Screens show skeletons while loading | ✅ API done · ⚠️ app cold-start not measured on a device |
+| 13 | Fix color contrast | Measured `mobile/src/theme.ts` against WCAG AA (4.5:1 for normal text). Pass: body text 16.6:1, `textMuted` 5.2:1, brand green 5.0:1, white on green buttons 5.4:1, danger 5.1:1, danger badge 4.7:1. **Fail:** `warning` `#B7791F` is 3.4:1 on the background and 3.3:1 in its badge — used for "Part paid"/"On credit" badges and the dashboard debt amount; `textSubtle` `#8A94A2` is 2.9:1 — used for input placeholders and 10 px chart axis labels | ⚠️ Darken `warning` (≈`#8F5E12`) and `textSubtle` (≈`#6B7584`), then re-check |
 | 14 | Make it mobile friendly | It already is the mobile app | ➖ N/A |
 | 15 | Custom 404 page | NestJS returns its default JSON 404 for unknown routes (the bare `/` URL now returns a small status message instead); Expo Router has its own default not-found screen. Neither is customized, but neither is broken | ⚠️ Default, not customized |
 | 16 | Fix broken links | No web pages | ➖ N/A |
@@ -44,11 +44,15 @@ Roughly in priority order. Status as of 2026-09-25:
    a scratch schema before being applied.
 4. ✅ **No deployment target** — fixed. The API runs on Render from
    `backend/Dockerfile` (blueprint in `render.yaml`) against Supabase.
-5. ⚠️ **Test coverage is partial** — 33 unit tests cover sale creation,
+5. ⚠️ **Test coverage is partial** — 59 unit tests cover sale creation,
    FIFO repayment allocation, payment-status transitions, roles, branch
-   context, employees and analytics. There are no integration tests against a
-   real database and no mobile tests; those paths were verified by hand
-   against the live API.
+   context, employees, analytics buckets, ledger filters, and the ledger
+   event written by every product/customer/expense edit and delete. There are
+   no committed integration tests against a real database and no mobile
+   tests. During the revamp a throwaway end-to-end script exercised every
+   write against the live API and checked each produced exactly one matching
+   ledger event (55/55); it caught a SQL type error the mocked tests couldn't,
+   which is the argument for committing something like it.
 6. ➖ **CI** — deliberately skipped for now (decision, not an oversight).
    Build, typecheck and tests are run manually before each push.
 7. ⚠️ **No backup/disaster-recovery plan** for the database beyond whatever
@@ -78,8 +82,10 @@ Roughly in priority order. Status as of 2026-09-25:
   adding to that list.
 - Row Level Security is enabled with no policies on every table. Tenant
   isolation is enforced in application code, not by the database.
-- The camera permission text is in `mobile/app.json`; store listings will need
-  a matching privacy-policy disclosure (item 1).
+- The camera and photo-library permission text is in `mobile/app.json`
+  (`expo-camera` and `expo-image-picker` plugins); store listings will need a
+  matching privacy-policy disclosure (item 1), including that product photos
+  are uploaded and stored on the server.
 
 ## Security review (2026-09-28)
 
@@ -114,11 +120,11 @@ relevant code, didn't assume):
 | Session replay on by default (CA wiretapping) | Grepped for FullStory/Hotjar/LogRocket/PostHog/Mixpanel/Amplitude/Sentry | ➖ **N/A.** No analytics or session-replay SDK is integrated anywhere yet (see item 19 above — "set up analytics" is still just a todo). Nothing to turn off. **When analytics does get added, come back to this and default it off with masked inputs.** |
 | Marketing email with no unsubscribe/address (CAN-SPAM) | Grepped for nodemailer/SendGrid/Mailgun/SMTP | ➖ **N/A.** The app sends no email at all — email is only a login identifier, never a send target. **Revisit if/when transactional or marketing email is added.** |
 | Stripe subscription with no renewal terms (CA ARL) | Grepped for Stripe/subscription/billing | ➖ **N/A.** No billing or subscription system exists yet — the blueprint's freemium model (README/PDF) is unimplemented. **Revisit when monetization ships — renewal terms and cancel instructions need to sit right next to the subscribe button, not buried in ToS.** |
-| No DMCA designated agent ($150k/stolen image) | Grepped for Multer/`FileInterceptor`/image upload | ➖ **N/A.** No image or file upload feature exists — `Product` has no image field, no endpoint accepts a file. **Revisit if product photos or any user-uploaded content is added.** |
+| No DMCA designated agent ($150k/stolen image) | Grepped for Multer/`FileInterceptor`/image upload | ⚠️ **Revisit now.** Product photos were added on 2026-09-29 (`PUT /products/:id/image`). They're private to the uploading business (only its own signed-in users can fetch them) and never published, which keeps the exposure low, but this is now user-uploaded content. Decide on a takedown contact and cover it in the terms (item 2) before public launch. |
 
-Honest summary: 5 of the 6 items describe risk surfaces (marketing email,
+Honest summary (as of 2026-09-28): 5 of the 6 items describe risk surfaces (marketing email,
 billing, session-replay analytics, user-uploaded images) this app simply
-doesn't have yet, so they're not fixable — there's nothing to fix. The one
+didn't have yet — user-uploaded images have since arrived, see the DMCA row, so they're not fixable — there's nothing to fix. The one
 that was real (no age gate) is fixed. The other 5 are now written down as
 "come back to this when X ships" rather than silently forgotten, which is
 the actual point even where its specific examples didn't apply
@@ -132,11 +138,11 @@ A second checklist lists 30 visual/design tells of a generic AI-generated market
 | Claim | Checked | Result |
 |---|---|---|
 | Emojis (#7) | Tab bar icons in `mobile/app/(tabs)/_layout.tsx` | ⚠️ **Real hit — fixed.** All five tab icons (🏠🧾📦👥💸) were literal emoji characters — the exact low-effort placeholder pattern this flags. Swapped for `@expo/vector-icons` (Ionicons, ships with Expo — no new dependency to speak of), filled when active/outline when inactive, matching the existing active/inactive tint colors. Verified: type-checks, and the app bundles clean with the new icon font. |
-| Harsh gradients, drop shadows (#1, #5) | Grepped for `LinearGradient`/`shadowColor`/`shadowOffset`/`elevation`/`boxShadow` across `mobile/src` | ➖ **N/A.** None found — cards use a flat `borderWidth`/`borderColor` style, not shadows or gradients. |
+| Harsh gradients, drop shadows (#1, #5) | Grepped for `LinearGradient`/`shadowColor`/`shadowOffset`/`elevation`/`boxShadow` across `mobile/src` | ➖ **N/A.** No gradients. Since the revamp, cards, stat cards and toasts use one soft shadow token (`shadow.card`/`shadow.raised` in `theme.ts`) alongside a hairline border — subtle, not harsh. |
 | Lucide icons, Inter/Geist/Space Grotesk fonts (#2, #10) | Grepped for `lucide`/`fontFamily`/`Geist`/`Space Grotesk`/`@expo-google-fonts` | ➖ **N/A.** No icon library was in use before this fix (hence the emoji), and no custom font is configured anywhere — the app renders in the OS's native system font, not one of the generic "AI SaaS" font picks. |
 | Pure white background, rainbow/neon/purple-black coloring (#3, #4, #20, #29) | `mobile/src/theme.ts` | ➖ **N/A.** Background is a soft off-white (`#F5F7FA`), and the palette is a single deliberate brand accent (green, `#0F7A4B`) plus muted grays/red/amber for status — not a multi-color or neon scheme. |
 | 3 feature cards in a row, bento grids, terminal window, fake testimonials, 3 pricing tiers, "it's not x it's y" copy, checkmark-bullet feature lists, no real product demos (#6, #13, #14, #12, #17, #15, #16, #18) | N/A by construction | ➖ **N/A.** These are all marketing-landing-page patterns. There is no marketing site — the app *is* the product, there's no separate page selling it. |
-| No skeleton loaders, radial orbs, dot grids, sparkle icons, animated arrows, hover animations, "liquid glass" (#19, #21–25, #28) | Screens use `ActivityIndicator` for loading states | ➖ **N/A.** These are web-only interaction/decoration patterns (hover doesn't exist as a concept on a touchscreen) or effects never used here. |
+| No skeleton loaders, radial orbs, dot grids, sparkle icons, animated arrows, hover animations, "liquid glass" (#19, #21–25, #28) | Loading states since the revamp | ✅ **Skeleton loaders added** (`Skeleton`, `SkeletonList`, `SkeletonStats` in `Feedback.tsx`) on every data screen. The rest are web-only decoration patterns (hover doesn't exist on a touchscreen) or effects never used here. |
 | No TOS, no privacy policy (#26, #27) | Cross-checked against this doc | ⚠️ **Already tracked** — items 1 and 2 in "Real gaps" above (privacy policy, terms & conditions). Not new work, just confirms those two are the genuinely relevant items from this list too. |
 
 Honest summary: 1 of 30 was a real, fixable issue specific to this app
@@ -145,6 +151,22 @@ with the first checklist; the remaining 27 describe a marketing website
 this product doesn't have and isn't building right now. Same pattern as
 the first review — check before claiming, fix what's real, don't invent
 work to look thorough.
+
+## UI/UX revamp follow-ups (2026-10-04)
+
+What the revamp added that needs watching, and what's still open:
+
+| # | Item | Status |
+|---|---|---|
+| 1 | **Set `DB_POOL_MAX=5` on Render.** The code default is now 5, but an env var set on Render overrides it. Supabase's free session pooler allows 15 connections across every server using the database; going over returns `EMAXCONNSESSION` and the dashboard fails with a 500 | ⚠️ Check the Render env var |
+| 2 | **Product photos on a real device.** Picking from camera/library, resizing and uploading need the native build; the web preview can't open a file chooser for automated testing. The server side (type check by file signature, 2 MB cap, owner-only writes, business-scoped reads) was tested live | ⚠️ Test on the new APK |
+| 3 | **Photos are stored in Postgres** (`product_images`, `bytea`). Fine at this scale (≈100 KB each after resizing), but they count against the database size limit (500 MB on Supabase's free tier) and are included in every backup. Move to object storage (Supabase Storage/S3) if photo counts grow | ⚠️ Revisit with real usage |
+| 4 | **Deletes are guarded but permanent.** Products and customers with history can't be deleted (409). An expense delete removes the row; the `EXPENSE_DELETED` event keeps its amount, category and note, but there's no undo or restore screen | ➖ Accepted for now |
+| 5 | **Upload endpoint and rate limiting.** `PUT /products/:id/image` is owner-only and size-capped, but like every other route it isn't rate-limited (see security finding 1) | ⚠️ Same as security finding 1 |
+| 6 | **Colour contrast** for the warning colour and subtle text fails AA (checklist item 13 above has the measured ratios) | ⚠️ Not fixed |
+| 7 | **Expo web isn't a supported target.** It's used only to test layouts during development (checked at 360, 768 and 1024 px). The camera and image picking are native-only | ➖ By design |
+| 8 | **Time zone handling** — `timestamp` columns are read and written as UTC regardless of the server's time zone (`backend/src/database/pg-types.ts`). Before this, a server running on Lagos time showed every event an hour old and shifted date-range filters by an hour | ✅ Fixed |
+| 9 | **Ledger history indexes** — expression indexes on `metadata->>'productId'`, `'customerId'` and `'saleId'` keep product, customer and sale history fast. Expense history (`entity=expense`) has no index yet; fine while one business has few expense events, but add one if it slows down, and give any new entity type its own | ⚠️ Expense index missing |
 
 ## Explicitly out of scope for "production-ready MVP"
 
