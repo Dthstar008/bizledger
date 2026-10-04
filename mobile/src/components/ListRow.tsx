@@ -22,7 +22,7 @@ export function ListRow({ title, subtitle, leading, trailing, onPress, last, acc
     <>
       {leading}
       <View style={styles.text}>
-        <AppText variant="bodyStrong" numberOfLines={1}>
+        <AppText variant="bodyStrong" numberOfLines={2}>
           {title}
         </AppText>
         {subtitle ? (

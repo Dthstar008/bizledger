@@ -80,7 +80,7 @@ export const TextField = forwardRef<TextInput, Props>(function TextField(
 });
 
 const styles = StyleSheet.create({
-  container: { gap: spacing.xs + 2 },
+  container: { gap: spacing.xs + 2, minWidth: 0 },
   field: {
     minHeight: touch.min + 4,
     flexDirection: 'row',
@@ -97,6 +97,8 @@ const styles = StyleSheet.create({
   disabled: { backgroundColor: colors.surfaceAlt },
   input: {
     flex: 1,
+    // Lets the input shrink in narrow rows; on web an <input> otherwise keeps its intrinsic width.
+    minWidth: 0,
     fontSize: 16,
     color: colors.text,
     paddingVertical: spacing.sm + 2,

@@ -102,7 +102,7 @@ export default function AnalyticsScreen() {
       <StatGrid>
         <StatCard label="Revenue" value={formatNaira(a.totals.revenue)} icon="trending-up-outline" />
         <StatCard label="Gross profit" value={formatNaira(a.totals.profit)} tone="positive" icon="stats-chart-outline" />
-        <StatCard label="Expenses" value={formatNaira(a.expenses.total)} tone="negative" icon="wallet-outline" />
+        <StatCard label="Expenses" value={formatNaira(a.expenses.total)} tone={a.expenses.total > 0 ? 'negative' : 'default'} icon="wallet-outline" />
         <StatCard label="Net profit" value={formatNaira(a.netProfit)} tone={a.netProfit >= 0 ? 'positive' : 'negative'} icon="ribbon-outline" />
         <StatCard label="Sales" value={String(a.totals.saleCount)} icon="receipt-outline" />
         <StatCard label="Average sale" value={formatNaira(a.totals.averageSale)} icon="calculator-outline" />

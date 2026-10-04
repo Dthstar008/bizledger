@@ -12,7 +12,7 @@
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
+        "backgroundColor": "#E6F4ED",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
@@ -29,7 +29,14 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "BizLedger uses the camera to scan product barcodes when you add stock or make a sale."
+          "cameraPermission": "BizLedger uses the camera to scan product barcodes and take product photos."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "BizLedger uses your photos so you can add a picture to a product.",
+          "cameraPermission": "BizLedger uses the camera to scan product barcodes and take product photos."
         }
       ]
     ],

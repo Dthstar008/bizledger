@@ -119,7 +119,7 @@ export default function DashboardScreen() {
           tone={summary.netProfit >= 0 ? 'positive' : 'negative'}
           hint={`Gross ${formatNaira(summary.grossProfit)}`}
         />
-        <StatCard label="Expenses" value={formatNaira(summary.expenses)} icon="wallet-outline" tone="negative" onPress={() => router.push('/(tabs)/expenses')} />
+        <StatCard label="Expenses" value={formatNaira(summary.expenses)} icon="wallet-outline" tone={summary.expenses > 0 ? 'negative' : 'default'} onPress={() => router.push('/(tabs)/expenses')} />
         <StatCard label="Cash in hand" value={formatNaira(summary.cash)} icon="cash-outline" hint="After expenses" />
         <StatCard label="Inventory value" value={formatNaira(summary.inventoryValue)} icon="cube-outline" onPress={() => router.push('/(tabs)/inventory')} />
         <StatCard label="Customers" value={String(summary.customerCount)} icon="people-outline" onPress={() => router.push('/(tabs)/customers')} />

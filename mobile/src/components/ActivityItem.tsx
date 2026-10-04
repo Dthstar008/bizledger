@@ -111,7 +111,7 @@ export function ActivityItem({ event, actorName, last }: Props) {
         <Ionicons name={d.icon} size={18} color={toneColor[d.tone]} />
       </View>
       <View style={styles.text}>
-        <AppText variant="bodyStrong" numberOfLines={1}>
+        <AppText variant="bodyStrong" numberOfLines={2}>
           {d.title}
         </AppText>
         {d.detail ? (
