@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import './pg-types';
 import { DataSource } from 'typeorm';
 import {
   Business,

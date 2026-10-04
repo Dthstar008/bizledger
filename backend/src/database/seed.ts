@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import './pg-types';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from '../app.module';
 import { AuthService } from '../modules/auth/auth.service';
