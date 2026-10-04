@@ -19,6 +19,7 @@ import { createSale } from '../../src/api/sales';
 import { apiErrorMessage } from '../../src/api/client';
 import { Customer, PaymentMethod, Product, TransactionChannel } from '../../src/api/types';
 import { publish } from '../../src/events/bus';
+import { goBack } from '../../src/utils/navigation';
 import { useResource } from '../../src/hooks/useResource';
 import { useAuthStore } from '../../src/store/auth-store';
 import { buildReceiptText, openWhatsApp } from '../../src/utils/whatsapp';
@@ -165,7 +166,7 @@ export default function NewSaleScreen() {
         confirmLabel: 'Send receipt',
       });
       if (send) await openWhatsApp(buildReceiptText(businessName, sale), selectedCustomer?.phone);
-      router.back();
+      goBack('/(tabs)/sales');
     } catch (err) {
       setError(apiErrorMessage(err));
     } finally {

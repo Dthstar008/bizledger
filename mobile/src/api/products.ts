@@ -1,3 +1,4 @@
+import { Platform } from 'react-native';
 import { apiBaseUrl, apiClient } from './client';
 import { Product } from './types';
 
@@ -34,14 +35,18 @@ export function deleteProduct(id: string) {
 }
 
 /** Uploads a local image file (already resized on the device) as the product photo. */
-export function uploadProductImage(id: string, file: { uri: string; mimeType?: string }) {
+export async function uploadProductImage(id: string, file: { uri: string; mimeType?: string }) {
   const form = new FormData();
   const type = file.mimeType ?? 'image/jpeg';
-  // React Native's FormData accepts { uri, name, type } for files on device.
-  form.append('image', { uri: file.uri, name: `product.${type.split('/')[1] ?? 'jpg'}`, type } as unknown as Blob);
-  return apiClient
-    .put<Product>(`/products/${id}/image`, form, { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 60_000 })
-    .then((r) => r.data);
+  const name = `product.${type.split('/')[1] ?? 'jpg'}`;
+  if (Platform.OS === 'web') {
+    // Browsers need a real Blob; the picker gives a blob:/data: URL.
+    form.append('image', await (await fetch(file.uri)).blob(), name);
+  } else {
+    // React Native's FormData accepts { uri, name, type } for files on the device.
+    form.append('image', { uri: file.uri, name, type } as unknown as Blob);
+  }
+  return apiClient.put<Product>(`/products/${id}/image`, form, { timeout: 60_000 }).then((r) => r.data);
 }
 
 export function removeProductImage(id: string) {

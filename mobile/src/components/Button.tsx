@@ -5,7 +5,8 @@ import { AppText } from './AppText';
 import { colors, radius, spacing, touch } from '../theme';
 
 type IconName = ComponentProps<typeof Ionicons>['name'];
-type Variant = 'primary' | 'secondary' | 'ghost' | 'danger';
+/** danger = filled red for the final confirm; destructive = red outline for a delete entry point. */
+type Variant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'destructive';
 type Size = 'md' | 'sm';
 
 interface Props {
@@ -27,6 +28,7 @@ const fg: Record<Variant, string> = {
   secondary: colors.text,
   ghost: colors.primary,
   danger: colors.onPrimary,
+  destructive: colors.danger,
 };
 
 export function Button({
@@ -91,6 +93,7 @@ const styles = StyleSheet.create({
   secondary: { backgroundColor: colors.surface, borderColor: colors.borderStrong },
   ghost: { backgroundColor: 'transparent' },
   danger: { backgroundColor: colors.danger },
+  destructive: { backgroundColor: colors.surface, borderColor: colors.danger },
   pressed: { opacity: 0.75 },
   disabled: { opacity: 0.45 },
 });
