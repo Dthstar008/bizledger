@@ -1,19 +1,30 @@
-import { useEffect, useState } from 'react';
-import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useMemo, useState } from 'react';
+import { Pressable, StyleSheet, View } from 'react-native';
 import { router } from 'expo-router';
-import { ScreenContainer } from '../../src/components/ScreenContainer';
+import { Ionicons } from '@expo/vector-icons';
+import { Screen } from '../../src/components/Screen';
 import { Button } from '../../src/components/Button';
+import { IconButton } from '../../src/components/IconButton';
 import { TextField } from '../../src/components/TextField';
+import { SearchBar } from '../../src/components/SearchBar';
+import { Section } from '../../src/components/Card';
+import { Chip, ChipGroup } from '../../src/components/Chip';
+import { AppText } from '../../src/components/AppText';
+import { ProductImage } from '../../src/components/ProductImage';
 import { BarcodeScanner } from '../../src/components/BarcodeScanner';
-import { useAuthStore } from '../../src/store/auth-store';
-import { buildReceiptText, openWhatsApp } from '../../src/utils/whatsapp';
+import { ErrorState, InlineError, SkeletonList, confirm } from '../../src/components/Feedback';
 import { findProductByBarcode, listProducts } from '../../src/api/products';
 import { listCustomers } from '../../src/api/customers';
 import { createSale } from '../../src/api/sales';
 import { apiErrorMessage } from '../../src/api/client';
 import { Customer, PaymentMethod, Product, TransactionChannel } from '../../src/api/types';
+import { publish } from '../../src/events/bus';
+import { useResource } from '../../src/hooks/useResource';
+import { useAuthStore } from '../../src/store/auth-store';
+import { buildReceiptText, openWhatsApp } from '../../src/utils/whatsapp';
 import { formatNaira } from '../../src/utils/currency';
-import { colors, radius, spacing } from '../../src/theme';
+import { parseAmount } from '../../src/utils/validate';
+import { colors, radius, spacing, touch } from '../../src/theme';
 
 interface CartLine {
   productId: string;
@@ -24,397 +35,374 @@ interface CartLine {
   maxStock: number;
 }
 
-const PAYMENT_METHODS: PaymentMethod[] = ['cash', 'transfer', 'pos', 'credit'];
+const METHODS: { value: PaymentMethod; label: string; icon: 'cash-outline' | 'swap-horizontal-outline' | 'card-outline' | 'time-outline' }[] = [
+  { value: 'cash', label: 'Cash', icon: 'cash-outline' },
+  { value: 'transfer', label: 'Transfer', icon: 'swap-horizontal-outline' },
+  { value: 'pos', label: 'POS', icon: 'card-outline' },
+  { value: 'credit', label: 'Credit', icon: 'time-outline' },
+];
 
-const TRANSFER_CHANNELS: { value: TransactionChannel; label: string }[] = [
+const CHANNELS: { value: TransactionChannel; label: string }[] = [
   { value: 'bank_transfer', label: 'Bank transfer' },
   { value: 'opay', label: 'OPay' },
   { value: 'palmpay', label: 'PalmPay' },
   { value: 'other', label: 'Other' },
 ];
 
+const PRODUCTS_SHOWN = 8;
+
+function Stepper({ value, min, max, onChange, label }: { value: number; min: number; max: number; onChange: (v: number) => void; label: string }) {
+  return (
+    <View style={styles.stepper} accessibilityLabel={`${label} quantity ${value}`}>
+      <IconButton icon="remove" size={18} accessibilityLabel={`One less ${label}`} disabled={value <= min} onPress={() => onChange(value - 1)} />
+      <AppText variant="bodyStrong" style={styles.stepperValue}>
+        {value}
+      </AppText>
+      <IconButton icon="add" size={18} accessibilityLabel={`One more ${label}`} disabled={value >= max} onPress={() => onChange(value + 1)} />
+    </View>
+  );
+}
+
 export default function NewSaleScreen() {
-  const [products, setProducts] = useState<Product[]>([]);
-  const [customers, setCustomers] = useState<Customer[]>([]);
+  const businessName = useAuthStore((s) => s.business?.name ?? 'Your business');
+  const products = useResource(listProducts, ['product.changed', 'stock.adjusted', 'sale.completed']);
+  const customers = useResource(listCustomers, ['customer.changed']);
+
+  const [query, setQuery] = useState('');
   const [cart, setCart] = useState<CartLine[]>([]);
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('cash');
-  const [customerId, setCustomerId] = useState<string | undefined>();
-  const [amountPaid, setAmountPaid] = useState('');
-  const [paymentReference, setPaymentReference] = useState('');
+  const [method, setMethod] = useState<PaymentMethod>('cash');
   const [channel, setChannel] = useState<TransactionChannel>('bank_transfer');
-  const [submitting, setSubmitting] = useState(false);
-  const [editingProductId, setEditingProductId] = useState<string | null>(null);
+  const [customerId, setCustomerId] = useState<string | undefined>();
+  const [customerQuery, setCustomerQuery] = useState('');
+  const [amountPaid, setAmountPaid] = useState('');
+  const [reference, setReference] = useState('');
+  const [editing, setEditing] = useState<string | null>(null);
   const [priceInput, setPriceInput] = useState('');
   const [scanning, setScanning] = useState(false);
-  const businessName = useAuthStore((s) => s.business?.name ?? 'Your business');
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
-  useEffect(() => {
-    listProducts().then(setProducts).catch((err) => Alert.alert('Could not load products', apiErrorMessage(err)));
-    listCustomers().then(setCustomers).catch(() => {});
-  }, []);
+  const total = cart.reduce((sum, l) => sum + l.unitPrice * l.quantity, 0);
+  const itemCount = cart.reduce((sum, l) => sum + l.quantity, 0);
+  const qtyOf = (id: string) => cart.find((l) => l.productId === id)?.quantity ?? 0;
 
-  const total = cart.reduce((sum, line) => sum + line.unitPrice * line.quantity, 0);
+  const matches = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    const list = (products.data ?? []).filter(
+      (p) => !q || p.name.toLowerCase().includes(q) || (p.sku ?? '').toLowerCase().includes(q) || (p.barcode ?? '').includes(q),
+    );
+    return q ? list : list.slice(0, PRODUCTS_SHOWN);
+  }, [products.data, query]);
 
-  function addToCart(product: Product) {
+  const customerMatches = useMemo(() => {
+    const q = customerQuery.trim().toLowerCase();
+    return (customers.data ?? []).filter((c) => !q || c.name.toLowerCase().includes(q) || (c.phone ?? '').includes(q)).slice(0, 12);
+  }, [customers.data, customerQuery]);
+  const selectedCustomer: Customer | undefined = customers.data?.find((c) => c.id === customerId);
+
+  function setQty(product: Pick<Product, 'id' | 'name' | 'sellingPrice' | 'stockQty'>, quantity: number) {
     setCart((prev) => {
       const existing = prev.find((l) => l.productId === product.id);
-      if (existing) {
-        if (existing.quantity >= product.stockQty) return prev;
-        return prev.map((l) => (l.productId === product.id ? { ...l, quantity: l.quantity + 1 } : l));
-      }
-      if (product.stockQty < 1) return prev;
+      if (quantity <= 0) return prev.filter((l) => l.productId !== product.id);
+      const q = Math.min(quantity, product.stockQty);
+      if (existing) return prev.map((l) => (l.productId === product.id ? { ...l, quantity: q } : l));
       return [
         ...prev,
-        {
-          productId: product.id,
-          productName: product.name,
-          unitPrice: product.sellingPrice,
-          catalogPrice: product.sellingPrice,
-          quantity: 1,
-          maxStock: product.stockQty,
-        },
+        { productId: product.id, productName: product.name, unitPrice: product.sellingPrice, catalogPrice: product.sellingPrice, quantity: q, maxStock: product.stockQty },
       ];
     });
   }
 
-  function removeLine(productId: string) {
-    setCart((prev) => prev.filter((l) => l.productId !== productId));
-  }
-
-  function startEditPrice(line: CartLine) {
-    setEditingProductId(line.productId);
-    setPriceInput(String(line.unitPrice));
-  }
-
-  function commitPrice(productId: string) {
-    const parsed = parseFloat(priceInput);
-    if (!isNaN(parsed) && parsed >= 0) {
-      setCart((prev) => prev.map((l) => (l.productId === productId ? { ...l, unitPrice: parsed } : l)));
-    }
-    setEditingProductId(null);
-  }
-
-  const needsCustomer = paymentMethod === 'credit';
-  const paidNumber = amountPaid ? parseFloat(amountPaid) : undefined;
-  const canSubmit =
-    cart.length > 0 &&
-    (!needsCustomer || !!customerId) &&
-    (paidNumber === undefined || (paidNumber >= 0 && paidNumber <= total));
-
   async function handleScan(code: string) {
     setScanning(false);
+    setNotice(null);
     try {
-      const product = products.find((p) => p.barcode === code) ?? (await findProductByBarcode(code));
-      if (!product) {
-        Alert.alert('Product not found', `No product is registered with barcode ${code}. Add it in Inventory first.`);
-        return;
-      }
-      if (product.stockQty < 1) {
-        Alert.alert('Out of stock', `${product.name} has no stock left.`);
-        return;
-      }
-      addToCart(product);
+      const product = products.data?.find((p) => p.barcode === code) ?? (await findProductByBarcode(code));
+      if (!product) return setNotice(`No product has barcode ${code}. Add it in Inventory first.`);
+      if (product.stockQty < 1) return setNotice(`${product.name} is out of stock.`);
+      setQty(product, qtyOf(product.id) + 1);
     } catch (err) {
-      Alert.alert('Could not look up barcode', apiErrorMessage(err));
+      setNotice(apiErrorMessage(err));
     }
   }
 
-  async function handleSubmit() {
+  function savePrice(productId: string) {
+    const parsed = parseAmount(priceInput);
+    if (parsed !== null && parsed >= 0) {
+      setCart((prev) => prev.map((l) => (l.productId === productId ? { ...l, unitPrice: parsed } : l)));
+    }
+    setEditing(null);
+  }
+
+  const paid = method === 'credit' ? parseAmount(amountPaid) ?? 0 : undefined;
+  const blocker =
+    cart.length === 0
+      ? 'Add at least one product'
+      : method === 'credit' && !customerId
+        ? 'Choose who is buying on credit'
+        : paid !== undefined && (paid < 0 || paid > total)
+          ? 'Amount paid now cannot be more than the total'
+          : null;
+
+  async function complete() {
+    if (blocker) return;
     setSubmitting(true);
+    setError(null);
     try {
       const sale = await createSale({
         items: cart.map((l) => ({ productId: l.productId, quantity: l.quantity, unitPrice: l.unitPrice })),
-        paymentMethod,
+        paymentMethod: method,
         customerId,
-        amountPaid: paidNumber,
-        paymentReference: paymentReference.trim() || undefined,
-        channel: paymentMethod === 'transfer' ? channel : undefined,
+        amountPaid: paid,
+        paymentReference: reference.trim() || undefined,
+        channel: method === 'transfer' ? channel : undefined,
       });
-      const customerPhone = customers.find((c) => c.id === customerId)?.phone;
-      Alert.alert('Sale recorded', `${formatNaira(sale.totalAmount)} — would you like to send the customer a receipt?`, [
-        { text: 'Done', style: 'cancel', onPress: () => router.back() },
-        {
-          text: 'Send on WhatsApp',
-          onPress: async () => {
-            await openWhatsApp(buildReceiptText(businessName, sale), customerPhone);
-            router.back();
-          },
-        },
-      ]);
+      publish({ type: 'sale.completed', sale });
+      const send = await confirm({
+        title: 'Sale recorded',
+        message: `${formatNaira(sale.totalAmount)}. Send the customer a receipt on WhatsApp?`,
+        confirmLabel: 'Send receipt',
+      });
+      if (send) await openWhatsApp(buildReceiptText(businessName, sale), selectedCustomer?.phone);
+      router.back();
     } catch (err) {
-      Alert.alert('Could not record sale', apiErrorMessage(err));
+      setError(apiErrorMessage(err));
     } finally {
       setSubmitting(false);
     }
   }
 
-  return (
-    <ScreenContainer>
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Add products</Text>
-        <Button label="Scan barcode" variant="secondary" onPress={() => setScanning(true)} />
-        <BarcodeScanner visible={scanning} onClose={() => setScanning(false)} onScanned={handleScan} />
-        <View style={styles.chipRow}>
-          {products.map((p) => (
-            <Pressable
-              key={p.id}
-              onPress={() => addToCart(p)}
-              disabled={p.stockQty < 1}
-              style={[styles.productChip, p.stockQty < 1 && styles.productChipDisabled]}
-            >
-              <Text style={styles.productChipText}>{p.name}</Text>
-              <Text style={styles.productChipMeta}>
-                {formatNaira(p.sellingPrice)} · {p.stockQty} left
-              </Text>
-            </Pressable>
-          ))}
-        </View>
+  const footer = (
+    <>
+      <View style={styles.totalRow}>
+        <AppText tone="muted">
+          {itemCount} item{itemCount === 1 ? '' : 's'}
+        </AppText>
+        <AppText variant="title">{formatNaira(total)}</AppText>
       </View>
+      {blocker && cart.length > 0 ? (
+        <AppText variant="caption" tone="warning" align="center">
+          {blocker}
+        </AppText>
+      ) : null}
+      <Button label="Complete sale" icon="checkmark" onPress={complete} loading={submitting} disabled={!!blocker} fullWidth />
+    </>
+  );
 
-      {cart.length > 0 && (
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Cart</Text>
-          {cart.map((line) => (
-            <View key={line.productId} style={styles.cartLineWrap}>
-              <View style={styles.cartRow}>
-                <Text style={styles.cartLine}>
-                  {line.quantity}× {line.productName}
-                </Text>
-                <Text style={styles.cartLineTotal}>{formatNaira(line.unitPrice * line.quantity)}</Text>
-                <Pressable onPress={() => removeLine(line.productId)}>
-                  <Text style={styles.remove}>✕</Text>
-                </Pressable>
-              </View>
+  if (products.loading) {
+    return (
+      <Screen edges={[]}>
+        <SkeletonList rows={5} />
+      </Screen>
+    );
+  }
+  if (!products.data) {
+    return (
+      <Screen edges={[]}>
+        <ErrorState message={products.error ?? 'Products could not be loaded.'} onRetry={products.retry} />
+      </Screen>
+    );
+  }
 
-              {editingProductId === line.productId ? (
-                <View style={styles.priceEditRow}>
-                  <TextField
-                    label="Unit price (₦)"
-                    value={priceInput}
-                    onChangeText={setPriceInput}
-                    keyboardType="numeric"
-                    autoFocus
-                  />
-                  <View style={styles.priceEditButtons}>
-                    <Button label="Cancel" variant="secondary" onPress={() => setEditingProductId(null)} />
-                    <Button label="Save price" onPress={() => commitPrice(line.productId)} />
+  return (
+    <Screen edges={[]} footer={footer}>
+      {error ? <InlineError message={error} /> : null}
+
+      <Section title="Add products" card={false}>
+        <View style={styles.searchRow}>
+          <View style={styles.flex}>
+            <SearchBar value={query} onChangeText={setQuery} placeholder="Search products" />
+          </View>
+          <IconButton icon="barcode-outline" variant="filled" accessibilityLabel="Scan a barcode" onPress={() => setScanning(true)} />
+        </View>
+        {notice ? <InlineError message={notice} /> : null}
+        <View style={styles.productList}>
+          {products.data.length === 0 ? (
+            <AppText tone="muted">You have no products yet. Add some in Inventory first.</AppText>
+          ) : matches.length === 0 ? (
+            <AppText tone="muted">No products match “{query}”.</AppText>
+          ) : (
+            matches.map((p, i) => {
+              const qty = qtyOf(p.id);
+              const out = p.stockQty < 1;
+              return (
+                <View key={p.id} style={[styles.productRow, i < matches.length - 1 && styles.separator, out && styles.disabled]}>
+                  <ProductImage product={p} size={44} />
+                  <View style={styles.flex}>
+                    <AppText variant="bodyStrong" numberOfLines={1}>
+                      {p.name}
+                    </AppText>
+                    <AppText variant="caption" tone={out ? 'danger' : p.stockQty <= p.lowStockThreshold ? 'warning' : 'muted'}>
+                      {formatNaira(p.sellingPrice)} · {out ? 'Out of stock' : `${p.stockQty} in stock`}
+                    </AppText>
                   </View>
+                  {qty > 0 ? (
+                    <Stepper value={qty} min={0} max={p.stockQty} label={p.name} onChange={(v) => setQty(p, v)} />
+                  ) : (
+                    <Button label="Add" icon="add" size="sm" variant="secondary" disabled={out} onPress={() => setQty(p, 1)} accessibilityLabel={`Add ${p.name}`} />
+                  )}
+                </View>
+              );
+            })
+          )}
+          {!query && products.data.length > PRODUCTS_SHOWN ? (
+            <AppText variant="caption" tone="subtle" align="center">
+              Showing {PRODUCTS_SHOWN} of {products.data.length}. Search to find more.
+            </AppText>
+          ) : null}
+        </View>
+      </Section>
+
+      {cart.length > 0 ? (
+        <Section title={`Cart (${itemCount})`}>
+          {cart.map((line, i) => (
+            <View key={line.productId} style={[styles.cartLine, i < cart.length - 1 && styles.separator]}>
+              <View style={styles.cartHead}>
+                <AppText variant="bodyStrong" style={styles.flex} numberOfLines={2}>
+                  {line.productName}
+                </AppText>
+                <AppText variant="bodyStrong">{formatNaira(line.unitPrice * line.quantity)}</AppText>
+              </View>
+              {editing === line.productId ? (
+                <View style={styles.priceEdit}>
+                  <View style={styles.flex}>
+                    <TextField
+                      label="Price per item"
+                      prefix="₦"
+                      value={priceInput}
+                      onChangeText={setPriceInput}
+                      keyboardType="numeric"
+                      autoFocus
+                      returnKeyType="done"
+                      onSubmitEditing={() => savePrice(line.productId)}
+                    />
+                  </View>
+                  <Button label="Save" size="sm" onPress={() => savePrice(line.productId)} style={styles.priceSave} />
                 </View>
               ) : (
-                <Pressable onPress={() => startEditPrice(line)} style={styles.priceRow}>
-                  <Text style={styles.priceRowText}>
-                    @ {formatNaira(line.unitPrice)} each
-                    {line.unitPrice !== line.catalogPrice ? `  ·  catalog ${formatNaira(line.catalogPrice)}` : ''}
-                  </Text>
-                  <Text style={styles.editLink}>Edit price</Text>
-                </Pressable>
+                <View style={styles.cartControls}>
+                  <Pressable
+                    onPress={() => {
+                      setEditing(line.productId);
+                      setPriceInput(String(line.unitPrice));
+                    }}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Change price of ${line.productName}`}
+                    style={styles.priceLink}
+                    hitSlop={6}
+                  >
+                    <AppText variant="caption" tone="muted">
+                      {formatNaira(line.unitPrice)} each
+                      {line.unitPrice !== line.catalogPrice ? ` (was ${formatNaira(line.catalogPrice)})` : ''}
+                    </AppText>
+                    <Ionicons name="pencil" size={13} color={colors.primary} />
+                  </Pressable>
+                  <Stepper
+                    value={line.quantity}
+                    min={0}
+                    max={line.maxStock}
+                    label={line.productName}
+                    onChange={(v) => setQty({ id: line.productId, name: line.productName, sellingPrice: line.catalogPrice, stockQty: line.maxStock }, v)}
+                  />
+                </View>
               )}
             </View>
           ))}
-          <View style={styles.cartTotalRow}>
-            <Text style={styles.cartTotalLabel}>Total</Text>
-            <Text style={styles.cartTotalValue}>{formatNaira(total)}</Text>
+        </Section>
+      ) : null}
+
+      <Section title="Payment">
+        <ChipGroup options={METHODS} value={method} onChange={setMethod} />
+        {method === 'transfer' ? (
+          <View style={styles.subgroup}>
+            <AppText variant="label" tone="muted">
+              Received via
+            </AppText>
+            <ChipGroup options={CHANNELS} value={channel} onChange={setChannel} />
           </View>
-        </View>
-      )}
-
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Payment method</Text>
-        <View style={styles.chipRow}>
-          {PAYMENT_METHODS.map((m) => (
-            <Pressable
-              key={m}
-              onPress={() => setPaymentMethod(m)}
-              style={[styles.chip, paymentMethod === m && styles.chipActive]}
-            >
-              <Text style={[styles.chipText, paymentMethod === m && styles.chipTextActive]}>{m}</Text>
-            </Pressable>
-          ))}
-        </View>
-      </View>
-
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Customer {needsCustomer ? '(required)' : '(optional)'}</Text>
-        <View style={styles.chipRow}>
-          {customers.map((c) => (
-            <Pressable
-              key={c.id}
-              onPress={() => setCustomerId(customerId === c.id ? undefined : c.id)}
-              style={[styles.chip, customerId === c.id && styles.chipActive]}
-            >
-              <Text style={[styles.chipText, customerId === c.id && styles.chipTextActive]}>{c.name}</Text>
-            </Pressable>
-          ))}
-          {customers.length === 0 && <Text style={styles.muted}>Add a customer from the Customers tab first.</Text>}
-        </View>
-      </View>
-
-      {paymentMethod === 'credit' && (
-        <TextField
-          label={`Amount paid now (₦) — leave blank for fully on credit`}
-          value={amountPaid}
-          onChangeText={setAmountPaid}
-          keyboardType="numeric"
-          placeholder="0"
-        />
-      )}
-
-      {paymentMethod === 'transfer' && (
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Received via</Text>
-          <View style={styles.chipRow}>
-            {TRANSFER_CHANNELS.map((c) => (
-              <Pressable
-                key={c.value}
-                onPress={() => setChannel(c.value)}
-                style={[styles.chip, channel === c.value && styles.chipActive]}
-              >
-                <Text style={[styles.chipText, channel === c.value && styles.chipTextActive]}>{c.label}</Text>
-              </Pressable>
-            ))}
-          </View>
-        </View>
-      )}
-
-      {(paymentMethod === 'transfer' || paymentMethod === 'pos') && (
-        <View style={styles.section}>
+        ) : null}
+        {method === 'credit' ? (
           <TextField
-            label="Transaction reference (optional)"
-            value={paymentReference}
-            onChangeText={setPaymentReference}
-            placeholder={paymentMethod === 'transfer' ? 'e.g. bank app reference' : 'e.g. POS slip number'}
+            label="Amount paid now (optional)"
+            prefix="₦"
+            value={amountPaid}
+            onChangeText={setAmountPaid}
+            keyboardType="numeric"
+            placeholder="0"
+            helper={total > 0 ? `${formatNaira(Math.max(0, total - (parseAmount(amountPaid) ?? 0)))} will be added to the customer's balance` : undefined}
           />
-          <Text style={styles.verifyNotice}>
-            This is recorded as merchant-entered, not verified — automatic verification needs a payment provider
-            connection, which isn't set up yet.
-          </Text>
-        </View>
-      )}
+        ) : null}
+        {method === 'transfer' || method === 'pos' ? (
+          <>
+            <TextField label="Reference (optional)" value={reference} onChangeText={setReference} placeholder="From the bank alert or POS slip" autoCapitalize="characters" />
+            <View style={styles.notice}>
+              <Ionicons name="information-circle-outline" size={18} color={colors.warning} />
+              <AppText variant="caption" style={styles.flex}>
+                Recorded as unverified until confirmed with your bank or POS provider.
+              </AppText>
+            </View>
+          </>
+        ) : null}
+      </Section>
 
-      <Button label="Confirm sale" onPress={handleSubmit} loading={submitting} disabled={!canSubmit} />
-    </ScreenContainer>
+      <Section
+        title={method === 'credit' ? 'Customer (required)' : 'Customer (optional)'}
+        action={<Button label="New" icon="person-add-outline" size="sm" variant="ghost" onPress={() => router.push('/customer/form')} />}
+      >
+        {selectedCustomer ? (
+          <View style={styles.selected}>
+            <Ionicons name="person-circle-outline" size={22} color={colors.primary} />
+            <AppText variant="bodyStrong" style={styles.flex}>
+              {selectedCustomer.name}
+            </AppText>
+            <Button label="Change" size="sm" variant="ghost" onPress={() => setCustomerId(undefined)} />
+          </View>
+        ) : (customers.data ?? []).length === 0 ? (
+          <AppText tone="muted">No customers yet. Tap “New” to add one.</AppText>
+        ) : (
+          <>
+            {(customers.data ?? []).length > 8 ? <SearchBar value={customerQuery} onChangeText={setCustomerQuery} placeholder="Search customers" /> : null}
+            <View style={styles.chips}>
+              {customerMatches.map((c) => (
+                <Chip key={c.id} label={c.name} icon="person-outline" onPress={() => setCustomerId(c.id)} />
+              ))}
+            </View>
+          </>
+        )}
+      </Section>
+
+      <BarcodeScanner visible={scanning} onClose={() => setScanning(false)} onScanned={handleScan} />
+    </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  section: {
-    gap: spacing.sm,
-  },
-  sectionTitle: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: colors.text,
-  },
-  chipRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.sm,
-  },
-  productChip: {
+  flex: { flex: 1 },
+  searchRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  productList: {
+    backgroundColor: colors.surface,
+    borderRadius: radius.lg,
     borderWidth: 1,
     borderColor: colors.border,
-    backgroundColor: colors.surface,
-    borderRadius: radius.sm,
-    padding: spacing.sm,
-    minWidth: 140,
-  },
-  productChipDisabled: {
-    opacity: 0.4,
-  },
-  productChipText: {
-    color: colors.text,
-    fontWeight: '600',
-  },
-  productChipMeta: {
-    color: colors.textMuted,
-    fontSize: 12,
-    marginTop: 2,
-  },
-  cartLineWrap: {
-    gap: spacing.xs,
-  },
-  cartRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-  },
-  priceRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  priceRowText: {
-    fontSize: 12,
-    color: colors.textMuted,
-    flex: 1,
-  },
-  editLink: {
-    fontSize: 12,
-    color: colors.primary,
-    fontWeight: '600',
-  },
-  priceEditRow: {
-    gap: spacing.sm,
-  },
-  priceEditButtons: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-  },
-  cartLine: {
-    flex: 1,
-    color: colors.text,
-  },
-  cartLineTotal: {
-    color: colors.text,
-    fontWeight: '600',
-  },
-  remove: {
-    color: colors.danger,
-    paddingHorizontal: spacing.xs,
-  },
-  cartTotalRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-    paddingTop: spacing.sm,
-  },
-  cartTotalLabel: {
-    fontWeight: '700',
-    color: colors.text,
-  },
-  cartTotalValue: {
-    fontWeight: '700',
-    color: colors.primary,
-    fontSize: 16,
-  },
-  chip: {
-    paddingHorizontal: spacing.sm,
+    paddingHorizontal: spacing.md,
     paddingVertical: spacing.xs,
-    borderRadius: radius.sm,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
+    gap: spacing.sm,
   },
-  chipActive: {
-    backgroundColor: colors.primaryMuted,
-    borderColor: colors.primary,
-  },
-  chipText: {
-    fontSize: 13,
-    color: colors.textMuted,
-    textTransform: 'capitalize',
-  },
-  chipTextActive: {
-    color: colors.primary,
-    fontWeight: '600',
-  },
-  muted: {
-    color: colors.textMuted,
-    fontSize: 13,
-  },
-  verifyNotice: {
-    color: colors.warning,
-    fontSize: 12,
-  },
+  productRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm + 4, paddingVertical: spacing.sm, minHeight: touch.min + 12 },
+  separator: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
+  disabled: { opacity: 0.5 },
+  stepper: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: colors.border, borderRadius: radius.pill, backgroundColor: colors.surface },
+  stepperValue: { minWidth: 24, textAlign: 'center' },
+  cartLine: { gap: spacing.sm, paddingBottom: spacing.sm },
+  cartHead: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm },
+  cartControls: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm },
+  priceLink: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, flexShrink: 1, minHeight: touch.min },
+  priceEdit: { flexDirection: 'row', alignItems: 'flex-end', gap: spacing.sm },
+  priceSave: { marginBottom: 6 },
+  subgroup: { gap: spacing.sm },
+  notice: { flexDirection: 'row', gap: spacing.sm, padding: spacing.sm + 2, borderRadius: radius.md, backgroundColor: colors.warningMuted },
+  selected: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+  totalRow: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between' },
 });

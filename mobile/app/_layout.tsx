@@ -1,8 +1,9 @@
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
-import { Stack } from 'expo-router';
+import { router, Stack, useSegments } from 'expo-router';
 import { useEffect } from 'react';
+import { useAuthStore } from '../src/store/auth-store';
 import { ServerWakeBanner } from '../src/components/ServerWakeBanner';
 import { EventToasts } from '../src/components/Toast';
 import { warmUpServer } from '../src/api/client';
@@ -18,6 +19,24 @@ const pushed = {
   headerBackButtonDisplayMode: 'minimal' as const,
   contentStyle: { backgroundColor: colors.background },
 };
+
+const PUBLIC_ROUTES = ['login', 'register', 'onboarding'];
+
+/**
+ * Sends any protected screen back to login when there is no session: on a
+ * deep link without one, or the moment a 401 clears an expired session.
+ */
+function AuthGate() {
+  const token = useAuthStore((s) => s.token);
+  const hydrated = useAuthStore((s) => s.hasHydrated);
+  const segments = useSegments();
+  const first = segments[0];
+  useEffect(() => {
+    if (!hydrated || token) return;
+    if (first && !PUBLIC_ROUTES.includes(first)) router.replace('/login');
+  }, [hydrated, token, first]);
+  return null;
+}
 
 export default function RootLayout() {
   // Begin waking the hosted server while the user is still on the login screen.
@@ -45,6 +64,7 @@ export default function RootLayout() {
           <Stack.Screen name="team" options={{ ...pushed, title: 'Team & branches' }} />
           <Stack.Screen name="analytics" options={{ ...pushed, title: 'Analytics' }} />
         </Stack>
+        <AuthGate />
         <ServerWakeBanner />
         <EventToasts />
       </SafeAreaProvider>
