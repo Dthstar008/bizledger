@@ -106,6 +106,54 @@ Set `NODE_ENV=production`, the `DB_*` variables and a real `JWT_SECRET`
 one. `CORS_ORIGINS` is closed by default in production, which is fine for the
 mobile app because native clients aren't subject to browser CORS.
 
+`GET /health` returns `{ status, version, commit }`, so you can check which
+release (and, on Render, which commit) is live.
+
+## Releasing
+
+The backend and the mobile app share one version number
+([Semantic Versioning](https://semver.org)): **major** when a change breaks
+apps already installed on phones, **minor** for new features, **patch** for
+fixes. What changed in each release is in [`CHANGELOG.md`](CHANGELOG.md), and
+each release is an annotated git tag (`v1.1.0`).
+
+**Branches.** `main` is always deployable: Render deploys every push to it.
+Do new work on a short-lived branch (`feature/financing-match`,
+`fix/repayment-rounding`) and merge it into `main` when it's ready. There is no
+CI, so before merging run `npx tsc --noEmit` and `npx jest` in `backend/`, and
+`npx tsc --noEmit` in `mobile/`.
+
+**Cutting a release.**
+
+1. Move the notes under `## [Unreleased]` in `CHANGELOG.md` to a new
+   `## [x.y.z] — YYYY-MM-DD` section and update the compare links at the bottom.
+2. Set the version in all three places:
+   ```bash
+   cd backend && npm version x.y.z --no-git-tag-version
+   ```
+   ```bash
+   cd mobile && npm version x.y.z --no-git-tag-version
+   ```
+   and `expo.version` in `mobile/app.json` (the version users see in the
+   store). EAS assigns build numbers itself (`appVersionSource: remote`).
+3. Commit, tag and push:
+   ```bash
+   git commit -am "Release x.y.z"
+   ```
+   ```bash
+   git tag -a vx.y.z -m "BizLedger x.y.z"
+   ```
+   ```bash
+   git push origin main --follow-tags
+   ```
+4. Check `GET /health` on Render reports the new version, then build the app
+   (`eas build --platform android --profile preview`, or `production`).
+
+**Compatibility.** Phones keep old app versions installed, so an API change
+must not break the previous app release: add fields and routes rather than
+renaming or removing them. Schema changes are new migrations; never edit one
+that has already run.
+
 ## API overview
 
 All routes except `/`, `/auth/*` and `/health` require `Authorization: Bearer <token>`

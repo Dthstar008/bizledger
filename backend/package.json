@@ -1,6 +1,6 @@
 {
   "name": "bizledger-backend",
-  "version": "0.1.0",
+  "version": "1.1.0",
   "description": "BizLedger API for Nigerian informal businesses",
   "private": true,
   "scripts": {

@@ -226,3 +226,14 @@ deployment record.
   (expo-doctor 21/21).
 - Built a new Android preview APK on EAS (needed because photo picking and
   charts add native modules); it finished cleanly on the first attempt.
+
+## October 7 — Version control for releases
+
+- Adopted one product version shared by the backend and the app (Semantic
+  Versioning), a `CHANGELOG.md`, and a release process in the README
+  (short-lived branches into an always-deployable `main`, annotated tags).
+- Tagged the history retroactively: **v1.0.0** for the hackathon release
+  (Sept 28), **v1.0.1** for the server wake-up fix (Sept 29), and **v1.1.0**
+  for the UI/UX revamp. Backend, mobile and `app.json` now all say 1.1.0.
+- `/health` now reports the running version and, on Render, the deployed
+  commit.
