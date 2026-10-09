@@ -14,6 +14,9 @@ import { changePassword, legalUrls } from '../src/api/auth';
 import { apiErrorMessage } from '../src/api/client';
 import { selectIsOwner, useAuthStore } from '../src/store/auth-store';
 import { APP_VERSION } from '../src/store/app-status-store';
+import { discardMyOutbox, useMyOutbox } from '../src/offline/outbox';
+import { clearCache } from '../src/offline/cache';
+import { clearProductImages } from '../src/offline/image-cache';
 import { isStrongPassword } from '../src/utils/password';
 import { colors, spacing } from '../src/theme';
 
@@ -88,15 +91,29 @@ export default function AccountScreen() {
   const logout = useAuthStore((s) => s.logout);
   const [changing, setChanging] = useState(false);
   const [changed, setChanged] = useState(false);
+  const unsynced = useMyOutbox().length;
 
   async function signOut() {
-    const ok = await confirm({
-      title: 'Log out?',
-      message: "You'll need your email and password to sign back in.",
-      confirmLabel: 'Log out',
-      destructive: true,
-    });
+    const ok = await confirm(
+      unsynced > 0
+        ? {
+            title: `${unsynced} record${unsynced === 1 ? " hasn't" : "s haven't"} synced`,
+            message: `Sales or expenses saved on this phone while offline haven't reached the server yet. If you log out now, ${unsynced === 1 ? 'it' : 'they'} will be lost. Connect to the internet and wait for them to sync first.`,
+            confirmLabel: 'Log out and lose them',
+            destructive: true,
+          }
+        : {
+            title: 'Log out?',
+            message: "You'll need your email and password to sign back in.",
+            confirmLabel: 'Log out',
+            destructive: true,
+          },
+    );
     if (!ok) return;
+    // Nothing from this account stays on the phone: unsent records, saved lists, product photos.
+    discardMyOutbox();
+    await clearCache();
+    clearProductImages();
     logout();
     router.replace('/login');
   }
@@ -141,6 +158,12 @@ export default function AccountScreen() {
           </>
         )}
       </Section>
+
+      {unsynced > 0 ? (
+        <Section title="Offline records">
+          <ListRow title={`${unsynced} waiting to sync`} subtitle="Saved on this phone while offline" onPress={() => router.push('/sync')} last />
+        </Section>
+      ) : null}
 
       <Section title="Legal">
         <ListRow title="Privacy Policy" subtitle="What we collect and how it is used" onPress={() => Linking.openURL(legalUrls.privacy)} />

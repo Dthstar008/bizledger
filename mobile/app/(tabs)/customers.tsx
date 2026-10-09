@@ -21,7 +21,7 @@ type Filter = 'all' | 'owing';
 export default function CustomersScreen() {
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<Filter>('all');
-  const { data, error, loading, refreshing, reload, retry } = useResource(listCustomers, ['customer.changed', 'sale.completed', 'payment.received']);
+  const { data, error, loading, refreshing, reload, retry } = useResource(listCustomers, ['customer.changed', 'sale.completed', 'payment.received'], [], { key: 'customers' });
 
   const owing = useMemo(() => (data ?? []).filter((c) => c.outstandingBalance > 0), [data]);
   const totalOwed = useMemo(() => owing.reduce((sum, c) => sum + c.outstandingBalance, 0), [owing]);

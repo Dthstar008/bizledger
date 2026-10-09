@@ -1,4 +1,5 @@
-import { PartialType } from '@nestjs/mapped-types';
+import { OmitType, PartialType } from '@nestjs/mapped-types';
 import { CreateExpenseDto } from './create-expense.dto';
 
-export class UpdateExpenseDto extends PartialType(CreateExpenseDto) {}
+/** The sync fields are fixed when an expense is created, so an edit can't change them. */
+export class UpdateExpenseDto extends PartialType(OmitType(CreateExpenseDto, ['clientRef', 'occurredAt'] as const)) {}

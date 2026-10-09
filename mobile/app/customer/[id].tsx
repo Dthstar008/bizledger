@@ -97,7 +97,7 @@ export default function CustomerDetailScreen() {
   const [error, setError] = useState<string | null>(null);
 
   const events = ['customer.changed', 'payment.received', 'sale.completed'] as const;
-  const customer = useResource(() => getCustomer(id), [...events], [id]);
+  const customer = useResource(() => getCustomer(id), [...events], [id], { key: `customer:${id}` });
   const activity = useResource(
     () => (isOwner ? listLedgerEvents({ entity: 'customer', entityId: id, limit: 20 }) : Promise.resolve([])),
     [...events],

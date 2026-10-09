@@ -6,6 +6,7 @@ import { CreateExpenseDto } from './dto/create-expense.dto';
 import { UpdateExpenseDto } from './dto/update-expense.dto';
 import { LedgerService } from '../ledger/ledger.service';
 import { withConnectionRetry } from '../../common/retry';
+import { isUniqueViolation, resolveOccurredAt } from '../../common/offline';
 import { Actor, actorMeta } from '../../common/current-business.decorator';
 
 @Injectable()
@@ -17,22 +18,55 @@ export class ExpensesService {
   ) {}
 
   async create(businessId: string, dto: CreateExpenseDto, branchId?: string, actor?: Actor): Promise<Expense> {
+    // An expense synced from the phone may arrive more than once; the first
+    // one stored wins and later copies get it back unchanged.
+    if (dto.clientRef) {
+      const existing = await this.findByClientRef(businessId, dto.clientRef);
+      if (existing) return existing;
+    }
     // Transactional so the expense and its EXPENSE_CREATED event commit
     // together; retried because a connection that fails to establish means
     // nothing was written yet.
-    return withConnectionRetry(() => this.createInner(businessId, dto, branchId, actor));
+    try {
+      return await withConnectionRetry(() => this.createInner(businessId, dto, branchId, actor));
+    } catch (err) {
+      // Two copies raced past the check above; the unique index let one through.
+      if (dto.clientRef && isUniqueViolation(err)) {
+        const existing = await this.findByClientRef(businessId, dto.clientRef);
+        if (existing) return existing;
+      }
+      throw err;
+    }
+  }
+
+  private findByClientRef(businessId: string, clientRef: string): Promise<Expense | null> {
+    return this.expenses.findOne({ where: { businessId, clientRef } });
   }
 
   private async createInner(businessId: string, dto: CreateExpenseDto, branchId?: string, actor?: Actor): Promise<Expense> {
+    const { clientRef, occurredAt, ...fields } = dto;
+    const offline = !!occurredAt;
     return this.dataSource.transaction(async (manager) => {
-      const expense = await manager
-        .getRepository(Expense)
-        .save(this.expenses.create({ ...dto, businessId, branchId: branchId ?? null }));
+      const expense = await manager.getRepository(Expense).save(
+        this.expenses.create({
+          ...fields,
+          businessId,
+          branchId: branchId ?? null,
+          clientRef: clientRef ?? null,
+          createdAt: resolveOccurredAt(occurredAt),
+        }),
+      );
       await this.ledgerService.record(
         businessId,
         LedgerEventType.EXPENSE_CREATED,
         expense.amount,
-        { expenseId: expense.id, category: expense.category, description: expense.description ?? null, ...actorMeta(actor) },
+        {
+          expenseId: expense.id,
+          category: expense.category,
+          description: expense.description ?? null,
+          ...(offline ? { recordedOffline: true, occurredAt: expense.createdAt.toISOString() } : {}),
+          ...actorMeta(actor),
+        },
         manager,
       );
       return expense;

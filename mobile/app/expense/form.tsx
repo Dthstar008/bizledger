@@ -9,7 +9,8 @@ import { ChipGroup } from '../../src/components/Chip';
 import { TextField } from '../../src/components/TextField';
 import { ActivityItem } from '../../src/components/ActivityItem';
 import { ErrorState, InlineError, Skeleton, SkeletonList, confirm } from '../../src/components/Feedback';
-import { createExpense, deleteExpense, getExpense, updateExpense } from '../../src/api/expenses';
+import { deleteExpense, getExpense, updateExpense } from '../../src/api/expenses';
+import { recordExpense } from '../../src/offline/outbox';
 import { listLedgerEvents } from '../../src/api/ledger';
 import { apiErrorMessage } from '../../src/api/client';
 import { Expense, ExpenseCategory } from '../../src/api/types';
@@ -82,8 +83,9 @@ export default function ExpenseFormScreen() {
         await updateExpense(original.id, { ...payload, description: description.trim() });
         publish({ type: 'expense.changed', expenseId: original.id, change: 'updated', amount: value });
       } else {
-        const created = await createExpense(payload);
-        publish({ type: 'expense.changed', expenseId: created.id, change: 'created', amount: value });
+        // Saved on the phone instead when there's no connection; it syncs by itself later.
+        const result = await recordExpense(payload);
+        if (result.status === 'saved') publish({ type: 'expense.changed', expenseId: result.record.id, change: 'created', amount: value });
       }
       goBack('/(tabs)/expenses');
     } catch (err) {

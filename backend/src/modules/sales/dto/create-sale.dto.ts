@@ -1,5 +1,5 @@
 import { Type } from 'class-transformer';
-import { ArrayMinSize, IsArray, IsEnum, IsInt, IsNumber, IsOptional, IsString, IsUUID, Min, ValidateNested } from 'class-validator';
+import { ArrayMinSize, IsArray, IsEnum, IsISO8601, IsInt, IsNumber, IsOptional, IsString, IsUUID, Min, ValidateNested } from 'class-validator';
 import { PaymentMethod, TransactionChannel } from '../../../entities';
 
 export class SaleItemDto {
@@ -46,4 +46,14 @@ export class CreateSaleDto {
   @IsOptional()
   @IsEnum(TransactionChannel)
   channel?: TransactionChannel;
+
+  /** Set by the app: a UUID made when the record was created on the phone. Sending the same one twice returns the first record instead of creating a duplicate. */
+  @IsOptional()
+  @IsUUID()
+  clientRef?: string;
+
+  /** When it actually happened, for records saved offline and synced later. Trusted up to 30 days back; never in the future. */
+  @IsOptional()
+  @IsISO8601()
+  occurredAt?: string;
 }

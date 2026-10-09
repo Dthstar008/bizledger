@@ -16,6 +16,7 @@ import {
 import { CreateSaleDto } from './dto/create-sale.dto';
 import { LedgerService } from '../ledger/ledger.service';
 import { withConnectionRetry } from '../../common/retry';
+import { isUniqueViolation, resolveOccurredAt } from '../../common/offline';
 import { Actor, actorMeta } from '../../common/current-business.decorator';
 
 /**
@@ -67,11 +68,36 @@ export class SalesService {
    * network latency, and that's the resource that runs out first at scale.
    */
   async create(businessId: string, dto: CreateSaleDto, branchId?: string, actor?: Actor): Promise<Sale> {
-    return withConnectionRetry(() => this.createInner(businessId, dto, branchId, actor));
+    // A sale synced from the phone may arrive more than once (a retry after
+    // a dropped connection). The first one stored wins: later copies get it
+    // back without touching stock or the ledger again.
+    if (dto.clientRef) {
+      const existing = await this.findByClientRef(businessId, dto.clientRef);
+      if (existing) return existing;
+    }
+    try {
+      return await withConnectionRetry(() => this.createInner(businessId, dto, branchId, actor));
+    } catch (err) {
+      // Two copies raced past the check above; the unique index let only one
+      // commit and rolled the other back entirely.
+      if (dto.clientRef && isUniqueViolation(err)) {
+        const existing = await this.findByClientRef(businessId, dto.clientRef);
+        if (existing) return existing;
+      }
+      throw err;
+    }
+  }
+
+  private findByClientRef(businessId: string, clientRef: string): Promise<Sale | null> {
+    return this.sales.findOne({ where: { businessId, clientRef }, relations: ['items', 'customer'] });
   }
 
   private async createInner(businessId: string, dto: CreateSaleDto, branchId?: string, actor?: Actor): Promise<Sale> {
-    const who = actorMeta(actor);
+    // Offline sales keep the time they were made (within limits), so they land
+    // on the right day in reports; the ledger notes that they arrived later.
+    const offline = dto.occurredAt ? { recordedOffline: true } : {};
+    const who = { ...actorMeta(actor), ...offline };
+    const occurredAt = resolveOccurredAt(dto.occurredAt);
     return this.dataSource.transaction(async (manager) => {
       const productRepo = manager.getRepository(Product);
       const saleRepo = manager.getRepository(Sale);
@@ -158,7 +184,6 @@ export class SalesService {
       // Transfer/POS are merchant-entered until a real payment-provider
       // integration exists to verify them — a reference number is not proof.
       const verified = dto.paymentMethod === PaymentMethod.CASH;
-      const now = new Date();
 
       const sale = await saleRepo.save(
         saleRepo.create({
@@ -175,7 +200,9 @@ export class SalesService {
           costTotal,
           paymentReference: dto.paymentReference,
           verified,
-          confirmedAt: now,
+          confirmedAt: occurredAt,
+          createdAt: occurredAt,
+          clientRef: dto.clientRef ?? null,
         }),
       );
 

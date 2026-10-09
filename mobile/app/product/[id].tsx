@@ -100,7 +100,7 @@ export default function ProductDetailScreen() {
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const product = useResource(() => getProduct(id), ['product.changed', 'stock.adjusted', 'sale.completed'], [id]);
+  const product = useResource(() => getProduct(id), ['product.changed', 'stock.adjusted', 'sale.completed'], [id], { key: `product:${id}` });
   const history = useResource(
     () => (isOwner ? listLedgerEvents({ entity: 'product', entityId: id, limit: 20 }) : Promise.resolve([])),
     ['product.changed', 'stock.adjusted', 'sale.completed'],

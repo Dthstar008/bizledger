@@ -15,12 +15,12 @@ import { BarcodeScanner } from '../../src/components/BarcodeScanner';
 import { ErrorState, InlineError, SkeletonList, confirm } from '../../src/components/Feedback';
 import { findProductByBarcode, listProducts } from '../../src/api/products';
 import { listCustomers } from '../../src/api/customers';
-import { createSale } from '../../src/api/sales';
 import { apiErrorMessage } from '../../src/api/client';
 import { Customer, PaymentMethod, Product, TransactionChannel } from '../../src/api/types';
 import { publish, useEvent } from '../../src/events/bus';
 import { goBack } from '../../src/utils/navigation';
 import { useResource } from '../../src/hooks/useResource';
+import { pendingStock, queuedSaleAsSale, recordSale, useMyOutbox } from '../../src/offline/outbox';
 import { useAuthStore } from '../../src/store/auth-store';
 import { buildReceiptText, openWhatsApp } from '../../src/utils/whatsapp';
 import { formatNaira } from '../../src/utils/currency';
@@ -66,8 +66,16 @@ function Stepper({ value, min, max, onChange, label }: { value: number; min: num
 
 export default function NewSaleScreen() {
   const businessName = useAuthStore((s) => s.business?.name ?? 'Your business');
-  const products = useResource(listProducts, ['product.changed', 'stock.adjusted', 'sale.completed']);
-  const customers = useResource(listCustomers, ['customer.changed']);
+  const products = useResource(listProducts, ['product.changed', 'stock.adjusted', 'sale.completed'], [], { key: 'products' });
+  const customers = useResource(listCustomers, ['customer.changed'], [], { key: 'customers' });
+  const outbox = useMyOutbox();
+
+  // Stock already reduced by sales made offline that haven't synced yet, so the same units can't be sold twice.
+  const productList = useMemo(() => {
+    const pending = pendingStock(outbox);
+    if (!products.data || pending.size === 0) return products.data;
+    return products.data.map((p) => (pending.has(p.id) ? { ...p, stockQty: Math.max(0, p.stockQty - pending.get(p.id)!) } : p));
+  }, [products.data, outbox]);
 
   const [query, setQuery] = useState('');
   const [cart, setCart] = useState<CartLine[]>([]);
@@ -95,11 +103,11 @@ export default function NewSaleScreen() {
 
   const matches = useMemo(() => {
     const q = query.trim().toLowerCase();
-    const list = (products.data ?? []).filter(
+    const list = (productList ?? []).filter(
       (p) => !q || p.name.toLowerCase().includes(q) || (p.sku ?? '').toLowerCase().includes(q) || (p.barcode ?? '').includes(q),
     );
     return q ? list : list.slice(0, PRODUCTS_SHOWN);
-  }, [products.data, query]);
+  }, [productList, query]);
 
   const customerMatches = useMemo(() => {
     const q = customerQuery.trim().toLowerCase();
@@ -124,7 +132,7 @@ export default function NewSaleScreen() {
     setScanning(false);
     setNotice(null);
     try {
-      const product = products.data?.find((p) => p.barcode === code) ?? (await findProductByBarcode(code));
+      const product = productList?.find((p) => p.barcode === code) ?? (await findProductByBarcode(code));
       if (!product) return setNotice(`No product has barcode ${code}. Add it in Inventory first.`);
       if (product.stockQty < 1) return setNotice(`${product.name} is out of stock.`);
       setQty(product, qtyOf(product.id) + 1);
@@ -156,18 +164,31 @@ export default function NewSaleScreen() {
     setSubmitting(true);
     setError(null);
     try {
-      const sale = await createSale({
-        items: cart.map((l) => ({ productId: l.productId, quantity: l.quantity, unitPrice: l.unitPrice })),
-        paymentMethod: method,
-        customerId,
-        amountPaid: paid,
-        paymentReference: reference.trim() || undefined,
-        channel: method === 'transfer' ? channel : undefined,
-      });
-      publish({ type: 'sale.completed', sale });
+      // Saved on the phone instead when there's no connection; it syncs by itself later.
+      const result = await recordSale(
+        {
+          items: cart.map((l) => ({ productId: l.productId, quantity: l.quantity, unitPrice: l.unitPrice })),
+          paymentMethod: method,
+          customerId,
+          amountPaid: paid,
+          paymentReference: reference.trim() || undefined,
+          channel: method === 'transfer' ? channel : undefined,
+        },
+        {
+          lines: cart.map((l) => ({ productId: l.productId, productName: l.productName, quantity: l.quantity, unitPrice: l.unitPrice })),
+          total,
+          amountPaid: paid ?? total,
+          customerName: selectedCustomer?.name,
+        },
+      );
+      const queued = result.status === 'queued';
+      const sale = result.status === 'saved' ? result.record : queuedSaleAsSale(result.item as Parameters<typeof queuedSaleAsSale>[0]);
+      if (!queued) publish({ type: 'sale.completed', sale });
       const send = await confirm({
-        title: 'Sale recorded',
-        message: `${formatNaira(sale.totalAmount)}. Send the customer a receipt on WhatsApp?`,
+        title: queued ? 'Sale saved on this phone' : 'Sale recorded',
+        message: queued
+          ? `${formatNaira(sale.totalAmount)}. You're offline, so it will sync automatically when you're back online. Send the customer a receipt on WhatsApp?`
+          : `${formatNaira(sale.totalAmount)}. Send the customer a receipt on WhatsApp?`,
         confirmLabel: 'Send receipt',
       });
       if (send) await openWhatsApp(buildReceiptText(businessName, sale), selectedCustomer?.phone);
@@ -224,7 +245,7 @@ export default function NewSaleScreen() {
         </View>
         {notice ? <InlineError message={notice} /> : null}
         <View style={styles.productList}>
-          {products.data.length === 0 ? (
+          {productList!.length === 0 ? (
             <AppText tone="muted">You have no products yet. Add some in Inventory first.</AppText>
           ) : matches.length === 0 ? (
             <AppText tone="muted">No products match “{query}”.</AppText>
@@ -252,9 +273,9 @@ export default function NewSaleScreen() {
               );
             })
           )}
-          {!query && products.data.length > PRODUCTS_SHOWN ? (
+          {!query && productList!.length > PRODUCTS_SHOWN ? (
             <AppText variant="caption" tone="subtle" align="center">
-              Showing {PRODUCTS_SHOWN} of {products.data.length}. Search to find more.
+              Showing {PRODUCTS_SHOWN} of {productList!.length}. Search to find more.
             </AppText>
           ) : null}
         </View>

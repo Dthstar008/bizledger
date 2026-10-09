@@ -8,6 +8,7 @@ import { ServerWakeBanner } from '../src/components/ServerWakeBanner';
 import { EventToasts } from '../src/components/Toast';
 import { UpdateGate } from '../src/components/UpdateGate';
 import { checkAppVersion, warmUpServer } from '../src/api/client';
+import { useOfflineSync } from '../src/offline/useOfflineSync';
 import { colors, type } from '../src/theme';
 
 // One header style for every pushed screen, so none of them looks like a different app.
@@ -40,6 +41,8 @@ function AuthGate() {
 }
 
 export default function RootLayout() {
+  // Sends sales and expenses saved offline once the connection is back.
+  useOfflineSync();
   // Begin waking the hosted server while the user is still on the login screen.
   useEffect(() => {
     warmUpServer();
@@ -68,6 +71,7 @@ export default function RootLayout() {
           <Stack.Screen name="team" options={{ ...pushed, title: 'Team & branches' }} />
           <Stack.Screen name="analytics" options={{ ...pushed, title: 'Analytics' }} />
           <Stack.Screen name="account" options={{ ...pushed, title: 'Account' }} />
+          <Stack.Screen name="sync" options={{ ...pushed, title: 'Offline records' }} />
         </Stack>
         <AuthGate />
         <ServerWakeBanner />

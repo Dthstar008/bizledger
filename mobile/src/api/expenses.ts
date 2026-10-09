@@ -1,3 +1,4 @@
+import { AxiosRequestConfig } from 'axios';
 import { apiClient } from './client';
 import { Expense, ExpenseCategory } from './types';
 
@@ -15,8 +16,9 @@ export function getExpense(id: string) {
   return apiClient.get<Expense>(`/expenses/${id}`).then((r) => r.data);
 }
 
-export function createExpense(payload: ExpenseInput) {
-  return apiClient.post<Expense>('/expenses', payload).then((r) => r.data);
+/** Same sync fields as createSale: safe to repeat with the same clientRef. */
+export function createExpense(payload: ExpenseInput & { clientRef?: string; occurredAt?: string }, config?: AxiosRequestConfig) {
+  return apiClient.post<Expense>('/expenses', payload, config).then((r) => r.data);
 }
 
 export function updateExpense(id: string, payload: Partial<ExpenseInput>) {

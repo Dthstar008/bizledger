@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { StyleSheet } from 'react-native';
 import { router } from 'expo-router';
 import { Screen } from '../../src/components/Screen';
@@ -14,6 +14,8 @@ import { ProductImage } from '../../src/components/ProductImage';
 import { EmptyState, ErrorState, InlineError, SkeletonList } from '../../src/components/Feedback';
 import { listProducts } from '../../src/api/products';
 import { useResource } from '../../src/hooks/useResource';
+import { pendingStock, useMyOutbox } from '../../src/offline/outbox';
+import { prefetchProductImages } from '../../src/offline/image-cache';
 import { selectIsOwner, useAuthStore } from '../../src/store/auth-store';
 import { formatNaira } from '../../src/utils/currency';
 import { spacing } from '../../src/theme';
@@ -24,7 +26,21 @@ export default function InventoryScreen() {
   const isOwner = useAuthStore(selectIsOwner);
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<Filter>('all');
-  const { data, error, loading, refreshing, reload, retry } = useResource(listProducts, ['product.changed', 'stock.adjusted', 'sale.completed']);
+  const products = useResource(listProducts, ['product.changed', 'stock.adjusted', 'sale.completed'], [], { key: 'products' });
+  const { error, loading, refreshing, reload, retry } = products;
+  const outbox = useMyOutbox();
+
+  // Stock on this phone already reflects sales made offline that haven't synced yet.
+  const data = useMemo(() => {
+    const pending = pendingStock(outbox);
+    if (!products.data || pending.size === 0) return products.data;
+    return products.data.map((p) => (pending.has(p.id) ? { ...p, stockQty: p.stockQty - pending.get(p.id)! } : p));
+  }, [products.data, outbox]);
+
+  // Keep every photo on the phone, so the list shows them at once and offline.
+  useEffect(() => {
+    if (products.data && products.savedAt === null) prefetchProductImages(products.data);
+  }, [products.data, products.savedAt]);
 
   const counts = useMemo(
     () => ({ low: (data ?? []).filter(isLow).length, out: (data ?? []).filter(isOut).length }),
@@ -106,7 +122,7 @@ export default function InventoryScreen() {
                   key={p.id}
                   title={p.name}
                   subtitle={[`Sells ${formatNaira(p.sellingPrice)}`, p.sku ? `SKU ${p.sku}` : null].filter(Boolean).join(' · ')}
-                  leading={<ProductImage product={p} size={48} />}
+                  leading={<ProductImage product={p} size={56} />}
                   trailing={<StockBadge product={p} />}
                   onPress={() => router.push({ pathname: '/product/[id]', params: { id: p.id } })}
                   last={i === visible.length - 1}

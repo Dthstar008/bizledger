@@ -11,7 +11,8 @@ import { colors, radius, shadow, spacing } from '../theme';
 function messageFor(e: AppEvent): string | null {
   switch (e.type) {
     case 'sale.completed':
-      return `Sale recorded · ${formatNaira(e.sale.totalAmount)}`;
+      // Synced records are announced together by outbox.synced.
+      return e.fromSync ? null : `Sale recorded · ${formatNaira(e.sale.totalAmount)}`;
     case 'payment.received':
       return `Repayment of ${formatNaira(e.amount)} recorded`;
     case 'stock.adjusted':
@@ -21,15 +22,30 @@ function messageFor(e: AppEvent): string | null {
     case 'customer.changed':
       return { created: 'Customer added', updated: 'Customer updated', deleted: 'Customer deleted' }[e.change];
     case 'expense.changed':
+      if (e.fromSync) return null;
       return { created: 'Expense recorded', updated: 'Expense updated', deleted: 'Expense deleted' }[e.change];
     case 'team.changed':
       return 'Team updated';
+    case 'outbox.queued':
+      return `${e.kind === 'sale' ? 'Sale' : 'Expense'} saved on this phone · will sync when online`;
+    case 'outbox.synced':
+      return `${e.count} offline record${e.count === 1 ? '' : 's'} synced`;
     default:
       return null;
   }
 }
 
-const ALL: AppEvent['type'][] = ['sale.completed', 'payment.received', 'stock.adjusted', 'product.changed', 'customer.changed', 'expense.changed', 'team.changed'];
+const ALL: AppEvent['type'][] = [
+  'sale.completed',
+  'payment.received',
+  'stock.adjusted',
+  'product.changed',
+  'customer.changed',
+  'expense.changed',
+  'team.changed',
+  'outbox.queued',
+  'outbox.synced',
+];
 
 export function EventToasts() {
   const insets = useSafeAreaInsets();

@@ -9,12 +9,17 @@ import type { Sale } from '../api/types';
  * of refetching everything on every visit.
  */
 export type AppEvent =
-  | { type: 'sale.completed'; sale: Sale }
+  // fromSync: a record saved offline that has now reached the server.
+  | { type: 'sale.completed'; sale: Sale; fromSync?: boolean }
   | { type: 'payment.received'; customerId: string; amount: number }
   | { type: 'stock.adjusted'; productId: string; delta: number }
   | { type: 'product.changed'; productId: string; change: 'created' | 'updated' | 'deleted' | 'photo' }
   | { type: 'customer.changed'; customerId: string; change: 'created' | 'updated' | 'deleted' }
-  | { type: 'expense.changed'; expenseId: string; change: 'created' | 'updated' | 'deleted'; amount?: number }
+  | { type: 'expense.changed'; expenseId: string; change: 'created' | 'updated' | 'deleted'; amount?: number; fromSync?: boolean }
+  /** A record was saved on the phone because there was no connection. */
+  | { type: 'outbox.queued'; kind: 'sale' | 'expense' }
+  /** Records saved offline reached the server. */
+  | { type: 'outbox.synced'; count: number }
   | { type: 'team.changed' }
   | { type: 'branch.selected'; branchId: string | null };
 

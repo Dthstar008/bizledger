@@ -4,6 +4,18 @@ import { Platform } from 'react-native';
 import { selectIsOwner, useAuthStore } from '../store/auth-store';
 import { APP_VERSION, compareVersions, useAppStatus } from '../store/app-status-store';
 import { ensureServerAwake, markServerContact } from './server-status';
+import { markServerReachable, useConnection } from '../offline/connection';
+
+declare module 'axios' {
+  interface AxiosRequestConfig {
+    /**
+     * Send to this branch instead of the one currently selected (null: no
+     * branch header). Used when syncing a record saved offline, which belongs
+     * to the branch it was recorded in.
+     */
+    branchOverride?: string | null;
+  }
+}
 
 const HOSTED_API_URL = 'https://bizledger-api-iitk.onrender.com';
 
@@ -42,8 +54,9 @@ export function warmUpServer() {
 
 apiClient.interceptors.request.use(async (config) => {
   // If the server may have gone to sleep, wait for it to wake before sending,
-  // rather than letting this request hit the normal 15s timeout.
-  await ensureServerAwake(apiUrl);
+  // rather than letting this request hit the normal 15s timeout. With no
+  // network at all there's nothing to wake; the request fails straight away.
+  if (useConnection.getState().deviceOnline) await ensureServerAwake(apiUrl);
   // Lets the server retire old app versions (426 Upgrade Required).
   config.headers['X-App-Version'] = APP_VERSION;
   config.headers['X-App-Platform'] = Platform.OS;
@@ -52,8 +65,9 @@ apiClient.interceptors.request.use(async (config) => {
     config.headers.Authorization = `Bearer ${state.token}`;
   }
   // Owners pick a branch to work in; staff are pinned by the server, which ignores this header for them.
-  if (state.activeBranchId && selectIsOwner(state)) {
-    config.headers['X-Branch-Id'] = state.activeBranchId;
+  const branchId = config.branchOverride !== undefined ? config.branchOverride : selectIsOwner(state) ? state.activeBranchId : null;
+  if (branchId) {
+    config.headers['X-Branch-Id'] = branchId;
   }
   return config;
 });
@@ -61,11 +75,13 @@ apiClient.interceptors.request.use(async (config) => {
 apiClient.interceptors.response.use(
   (response) => {
     markServerContact();
+    markServerReachable(true);
     return response;
   },
   async (error) => {
     if (error.response) {
       markServerContact();
+      markServerReachable(true);
       if (error.response.status === 426) {
         const data = error.response.data as { minVersion?: string; updateUrl?: string } | undefined;
         useAppStatus.getState().requireUpdate({ minVersion: data?.minVersion, updateUrl: data?.updateUrl });
@@ -80,11 +96,12 @@ apiClient.interceptors.response.use(
     // asleep mid-session. Only reads are retried: a timed-out write may still
     // have been processed, and replaying it could record a sale twice.
     const config = error.config as (InternalAxiosRequestConfig & { _retried?: boolean }) | undefined;
-    if (config && !config._retried && (config.method ?? 'get').toLowerCase() === 'get') {
+    if (config && !config._retried && (config.method ?? 'get').toLowerCase() === 'get' && useConnection.getState().deviceOnline) {
       config._retried = true;
       await ensureServerAwake(apiUrl, true);
       return apiClient(config);
     }
+    if (axios.isAxiosError(error) && !error.response && error.code !== 'ERR_CANCELED') markServerReachable(false);
     return Promise.reject(error);
   },
 );
@@ -111,6 +128,11 @@ function humanise(message: string): string {
   return [friendly, ...rest].join(' ').replace('must not be less than', 'must be at least').replace('should not be empty', 'is required');
 }
 
+/** The request never got an answer: no network, or the server couldn't be reached. Safe to retry later. */
+export function isNetworkError(error: unknown): boolean {
+  return axios.isAxiosError(error) && !error.response && error.code !== 'ERR_CANCELED';
+}
+
 /**
  * Turns any API failure into a sentence a business owner can act on. Raw
  * server errors (stack traces, SQL, "Internal server error") never reach the UI.
@@ -118,6 +140,7 @@ function humanise(message: string): string {
 export function apiErrorMessage(error: unknown): string {
   if (!axios.isAxiosError(error)) return 'Something went wrong. Please try again.';
   if (!error.response) {
+    if (!useConnection.getState().deviceOnline) return "You're offline. Connect to the internet and try again.";
     return error.code === 'ECONNABORTED'
       ? 'The server took too long to respond. Check your connection and try again.'
       : "Couldn't reach the server. Check your internet connection and try again.";

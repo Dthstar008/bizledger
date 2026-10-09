@@ -51,7 +51,7 @@ export default function DashboardScreen() {
   const business = useAuthStore((s) => s.business);
   const branchName = useActiveBranchName();
   const actorName = useTeamNames();
-  const { data, error, loading, refreshing, reload, retry } = useResource(loadDashboard, [...DASHBOARD_EVENTS]);
+  const { data, error, loading, refreshing, reload, retry } = useResource(loadDashboard, [...DASHBOARD_EVENTS], [], { key: 'dashboard' });
 
   const name = firstName(user?.name) ?? business?.name ?? 'there';
   const header = (

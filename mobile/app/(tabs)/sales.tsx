@@ -16,6 +16,7 @@ import { EmptyState, ErrorState, InlineError, SkeletonList, SkeletonStats } from
 import { listSales } from '../../src/api/sales';
 import { PaymentMethod, PaymentStatus, Sale } from '../../src/api/types';
 import { useResource } from '../../src/hooks/useResource';
+import { PendingRecords } from '../../src/components/PendingRecords';
 import { selectIsOwner, useAuthStore } from '../../src/store/auth-store';
 import { formatNaira } from '../../src/utils/currency';
 import { dayHeading, dayKey } from '../../src/utils/format';
@@ -103,7 +104,11 @@ export default function SalesScreen() {
   const branches = useAuthStore((s) => s.branches);
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<Filter>('all');
-  const { data, error, loading, refreshing, reload, retry } = useResource(listSales, ['sale.completed', 'payment.received', 'branch.selected']);
+  const { data, error, loading, refreshing, reload, retry } = useResource(listSales, ['sale.completed', 'payment.received', 'branch.selected'], [], {
+    key: 'sales',
+    // Enough for today's and this month's figures without filling the phone.
+    trim: (list) => list.slice(0, 300),
+  });
 
   const stats = useMemo(() => {
     const now = new Date();
@@ -188,6 +193,7 @@ export default function SalesScreen() {
     <Screen refreshing={refreshing} onRefresh={reload}>
       {header}
       {error ? <InlineError message={error} onRetry={reload} /> : null}
+      <PendingRecords kind="sale" />
       {data.length === 0 ? (
         <EmptyState
           icon="receipt-outline"

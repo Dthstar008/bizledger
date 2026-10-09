@@ -16,6 +16,7 @@ import { EmptyState, ErrorState, InlineError, SkeletonList, SkeletonStats } from
 import { listExpenses } from '../../src/api/expenses';
 import { Expense, ExpenseCategory } from '../../src/api/types';
 import { useResource } from '../../src/hooks/useResource';
+import { PendingRecords } from '../../src/components/PendingRecords';
 import { formatNaira } from '../../src/utils/currency';
 import { EXPENSE_CATEGORIES, expenseCategory } from '../../src/utils/expenses';
 import { dayHeading, dayKey } from '../../src/utils/format';
@@ -28,7 +29,10 @@ const sum = (list: Expense[]) => list.reduce((total, e) => total + e.amount, 0);
 export default function ExpensesScreen() {
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<Filter>('all');
-  const { data, error, loading, refreshing, reload, retry } = useResource(listExpenses, ['expense.changed', 'branch.selected']);
+  const { data, error, loading, refreshing, reload, retry } = useResource(listExpenses, ['expense.changed', 'branch.selected'], [], {
+    key: 'expenses',
+    trim: (list) => list.slice(0, 300),
+  });
 
   const stats = useMemo(() => {
     const all = data ?? [];
@@ -94,6 +98,7 @@ export default function ExpensesScreen() {
     <Screen refreshing={refreshing} onRefresh={reload}>
       {header}
       {error ? <InlineError message={error} onRetry={reload} /> : null}
+      <PendingRecords kind="expense" />
       {data.length === 0 ? (
         <EmptyState
           icon="wallet-outline"

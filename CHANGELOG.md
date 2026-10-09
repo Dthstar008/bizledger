@@ -10,6 +10,27 @@ numbers inside those commits' package files predate this scheme.
 
 ## [Unreleased]
 
+### Added
+- Offline mode. Lists (dashboard, inventory, sales, customers, expenses,
+  product and customer details) are saved on the phone and shown when there
+  is no connection. Sales and expenses recorded offline are saved on the
+  phone and sent automatically when the connection returns; stock shown on
+  the phone already accounts for them. A bar at the top of each screen says
+  when you're offline or have records waiting, and an "Offline records"
+  screen lets you retry or discard any the server refuses (for example, not
+  enough stock left). Logging out warns before unsent records are lost.
+- `clientRef` and `occurredAt` on `POST /sales` and `POST /expenses`. A
+  record sent twice with the same `clientRef` is stored once (unique per
+  business); an offline record keeps the time it was made (trusted up to 30
+  days back, never in the future) and its ledger events are marked
+  `recordedOffline`. Migration `OfflineSync1790400000000` adds the columns.
+
+### Fixed
+- Product photos in lists. Each photo is now downloaded with the user's
+  sign-in, kept on the phone and shown from there, so photos appear on the
+  web and after the server wakes from sleep, instead of falling back to the
+  placeholder for good after one failed load. They also show offline.
+
 ## [1.1.0] — 2026-10-07
 
 The UI/UX revamp, built around the event ledger.
