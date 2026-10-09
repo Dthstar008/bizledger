@@ -2,7 +2,8 @@ import { ReactNode } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { AppText } from './AppText';
-import { colors, spacing, touch } from '../theme';
+import { spacing, touch } from '../theme';
+import { makeStyles, useTheme } from '../theming';
 
 interface Props {
   title: string;
@@ -18,6 +19,8 @@ interface Props {
 
 /** A row inside a Card list: leading visual, two lines of text, trailing value, optional chevron. */
 export function ListRow({ title, subtitle, leading, trailing, onPress, last, accessibilityLabel }: Props) {
+  const styles = useStyles();
+  const { colors } = useTheme();
   const content = (
     <>
       {leading}
@@ -53,10 +56,10 @@ export function ListRow({ title, subtitle, leading, trailing, onPress, last, acc
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => ({
   wrap: {},
   separator: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
   row: { minHeight: touch.min + 12, flexDirection: 'row', alignItems: 'center', gap: spacing.sm + 4, paddingVertical: spacing.sm },
   pressed: { opacity: 0.6 },
   text: { flex: 1, gap: spacing.xxs },
-});
+}));

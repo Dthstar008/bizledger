@@ -1,4 +1,4 @@
-import { StyleSheet, View } from 'react-native';
+import { View } from 'react-native';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Card } from './Card';
@@ -8,7 +8,8 @@ import { OutboxItem, useMyOutbox, useOutbox } from '../offline/outbox';
 import { formatNaira } from '../utils/currency';
 import { expenseCategory } from '../utils/expenses';
 import { formatDateTime } from '../utils/format';
-import { colors, radius, spacing } from '../theme';
+import { radius, spacing } from '../theme';
+import { makeStyles, useTheme } from '../theming';
 
 export function outboxTitle(item: OutboxItem): string {
   if (item.kind === 'expense') return expenseCategory(item.payload.category).label;
@@ -28,6 +29,8 @@ export function outboxAmount(item: OutboxItem): number {
  * sync screen, where refused records can be retried or discarded.
  */
 export function PendingRecords({ kind }: { kind: OutboxItem['kind'] }) {
+  const styles = useStyles();
+  const { colors } = useTheme();
   const items = useMyOutbox().filter((i) => i.kind === kind);
   const syncing = useOutbox((s) => s.syncing);
   if (items.length === 0) return null;
@@ -74,10 +77,10 @@ export function PendingRecords({ kind }: { kind: OutboxItem['kind'] }) {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => ({
   card: { gap: spacing.sm, borderColor: colors.warning, borderWidth: 1, borderRadius: radius.lg },
   head: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   flex: { flex: 1 },
   row: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingTop: spacing.xs },
   right: { alignItems: 'flex-end', gap: spacing.xs },
-});
+}));

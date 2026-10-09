@@ -1,7 +1,8 @@
 import { ReactNode } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { View } from 'react-native';
 import { AppText } from './AppText';
 import { spacing } from '../theme';
+import { makeStyles } from '../theming';
 
 interface Props {
   title: string;
@@ -13,11 +14,12 @@ interface Props {
 }
 
 export function PageHeader({ title, subtitle, eyebrow, actions }: Props) {
+  const styles = useStyles();
   return (
     <View style={styles.row}>
       <View style={styles.text}>
         {eyebrow ? (
-          <AppText variant="overline" tone="primary">
+          <AppText variant="overline" tone="primary" numberOfLines={1}>
             {eyebrow}
           </AppText>
         ) : null}
@@ -25,7 +27,7 @@ export function PageHeader({ title, subtitle, eyebrow, actions }: Props) {
           {title}
         </AppText>
         {subtitle ? (
-          <AppText variant="caption" tone="muted" numberOfLines={2}>
+          <AppText variant="label" tone="muted" numberOfLines={2}>
             {subtitle}
           </AppText>
         ) : null}
@@ -35,8 +37,8 @@ export function PageHeader({ title, subtitle, eyebrow, actions }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles(() => ({
   row: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  text: { flex: 1, gap: spacing.xxs },
-  actions: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
-});
+  text: { flex: 1, gap: spacing.xxs, minWidth: 0 },
+  actions: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, flexShrink: 0 },
+}));

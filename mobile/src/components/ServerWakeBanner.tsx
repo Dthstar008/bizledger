@@ -1,10 +1,12 @@
-import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useServerStatus } from '../api/server-status';
-import { colors, radius, spacing } from '../theme';
+import { radius, spacing } from '../theme';
+import { makeStyles } from '../theming';
 
 /** Shown while the hosted server is waking from sleep, instead of letting requests time out. */
 export function ServerWakeBanner() {
+  const styles = useStyles();
   const state = useServerStatus((s) => s.state);
   const insets = useSafeAreaInsets();
   if (state !== 'waking') return null;
@@ -18,7 +20,7 @@ export function ServerWakeBanner() {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => ({
   wrap: {
     position: 'absolute',
     left: spacing.md,
@@ -40,4 +42,4 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     flexShrink: 1,
   },
-});
+}));

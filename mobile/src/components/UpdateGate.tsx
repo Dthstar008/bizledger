@@ -1,11 +1,12 @@
-import { Linking, Pressable, StyleSheet, View } from 'react-native';
+import { Linking, Pressable, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { AppText } from './AppText';
 import { Button } from './Button';
 import { BrandMark } from './Brand';
 import { APP_VERSION, useAppStatus } from '../store/app-status-store';
-import { colors, radius, shadow, spacing } from '../theme';
+import { radius, spacing } from '../theme';
+import { makeStyles, useTheme } from '../theming';
 
 /**
  * Covers the whole app when the server says this version is no longer
@@ -14,6 +15,8 @@ import { colors, radius, shadow, spacing } from '../theme';
  * here decides on its own that an update is needed.
  */
 export function UpdateGate() {
+  const styles = useStyles();
+  const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const { updateRequired, updateAvailable, bannerDismissed, minVersion, latestVersion, updateUrl, dismissBanner } = useAppStatus();
   const openUpdate = () => updateUrl && Linking.openURL(updateUrl);
@@ -64,7 +67,7 @@ export function UpdateGate() {
   return null;
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors, theme) => ({
   cover: {
     position: 'absolute',
     top: 0,
@@ -89,8 +92,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     padding: spacing.md,
-    ...shadow.raised,
+    ...theme.shadow.raised,
   },
   flex: { flex: 1, gap: 2 },
   dismiss: { padding: spacing.xs },
-});
+}));

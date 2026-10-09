@@ -1,7 +1,8 @@
-import { Image, ImageStyle, StyleSheet } from 'react-native';
+import { Image, ImageStyle } from 'react-native';
 import { Product } from '../api/types';
 import { useProductImageUri } from '../offline/image-cache';
-import { colors, radius } from '../theme';
+import { radius } from '../theme';
+import { makeStyles } from '../theming';
 
 const placeholder = require('../../assets/product-placeholder.png');
 
@@ -15,6 +16,7 @@ interface Props {
 
 /** Product photo (saved on the phone after the first download), or the BizLedger placeholder when there isn't one. */
 export function ProductImage({ product, size = 44, localUri, style }: Props) {
+  const styles = useStyles();
   const saved = useProductImageUri(product);
   const uri = localUri ?? saved;
   return (
@@ -27,6 +29,6 @@ export function ProductImage({ product, size = 44, localUri, style }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => ({
   image: { backgroundColor: colors.primaryMuted },
-});
+}));

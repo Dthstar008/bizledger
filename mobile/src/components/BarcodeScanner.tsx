@@ -6,7 +6,8 @@ import { CameraView, useCameraPermissions } from 'expo-camera';
 import { AppText } from './AppText';
 import { Button } from './Button';
 import { IconButton } from './IconButton';
-import { colors, radius, spacing } from '../theme';
+import { radius, spacing } from '../theme';
+import { makeStyles, useTheme } from '../theming';
 
 interface Props {
   visible: boolean;
@@ -15,6 +16,8 @@ interface Props {
 }
 
 export function BarcodeScanner({ visible, onScanned, onClose }: Props) {
+  const styles = useStyles();
+  const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const [permission, requestPermission] = useCameraPermissions();
   // The camera fires continuously while a code is in view; only report the first.
@@ -75,7 +78,7 @@ export function BarcodeScanner({ visible, onScanned, onClose }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => ({
   container: { flex: 1, backgroundColor: '#000' },
   overlay: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, alignItems: 'center', justifyContent: 'center', gap: spacing.sm, padding: spacing.lg },
   frame: {
@@ -99,4 +102,4 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   close: { position: 'absolute', right: spacing.md },
-});
+}));

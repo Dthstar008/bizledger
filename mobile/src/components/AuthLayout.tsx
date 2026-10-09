@@ -1,10 +1,11 @@
 import { PropsWithChildren, ReactNode } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { View } from 'react-native';
 import { AppText } from './AppText';
 import { BrandLockup } from './Brand';
 import { Card } from './Card';
 import { Screen } from './Screen';
 import { spacing } from '../theme';
+import { makeStyles } from '../theming';
 
 interface Props extends PropsWithChildren {
   heading: string;
@@ -14,6 +15,7 @@ interface Props extends PropsWithChildren {
 
 /** Shared frame for login and sign-up so both read as the same product. */
 export function AuthLayout({ heading, subheading, footer, children }: Props) {
+  const styles = useStyles();
   return (
     <Screen edges={['top', 'bottom']} contentStyle={styles.content}>
       <View style={styles.inner}>
@@ -33,10 +35,10 @@ export function AuthLayout({ heading, subheading, footer, children }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles(() => ({
   content: { flexGrow: 1, justifyContent: 'center', paddingVertical: spacing.xl },
   inner: { width: '100%', maxWidth: 440, alignSelf: 'center', gap: spacing.lg },
   heading: { gap: spacing.xs },
   card: { gap: spacing.md, padding: spacing.lg - 4 },
   footer: { alignItems: 'center' },
-});
+}));

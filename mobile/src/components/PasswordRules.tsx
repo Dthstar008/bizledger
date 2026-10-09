@@ -1,11 +1,14 @@
-import { StyleSheet, View } from 'react-native';
+import { View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { AppText } from './AppText';
 import { passwordChecks } from '../utils/password';
-import { colors, spacing } from '../theme';
+import { spacing } from '../theme';
+import { makeStyles, useTheme } from '../theming';
 
 /** Live checklist under a new-password field; each rule ticks as it is met. */
 export function PasswordRules({ password, email, showErrors }: { password: string; email?: string; showErrors?: boolean }) {
+  const styles = useStyles();
+  const { colors } = useTheme();
   return (
     <View style={styles.list} accessibilityLabel="Password requirements">
       {passwordChecks(password, email).map((check) => {
@@ -28,7 +31,7 @@ export function PasswordRules({ password, email, showErrors }: { password: strin
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles(() => ({
   list: { gap: spacing.xs },
   row: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs + 2 },
-});
+}));

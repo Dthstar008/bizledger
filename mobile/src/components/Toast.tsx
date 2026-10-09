@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
-import { Animated, Platform, StyleSheet, View } from 'react-native';
+import { Animated, Platform, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { AppText } from './AppText';
 import { AppEvent, subscribe } from '../events/bus';
 import { formatNaira } from '../utils/currency';
-import { colors, radius, shadow, spacing } from '../theme';
+import { radius, spacing } from '../theme';
+import { makeStyles, useTheme } from '../theming';
 
 /** Every confirmation message comes from a domain event, so feedback is consistent everywhere. */
 function messageFor(e: AppEvent): string | null {
@@ -48,6 +49,8 @@ const ALL: AppEvent['type'][] = [
 ];
 
 export function EventToasts() {
+  const styles = useStyles();
+  const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const [message, setMessage] = useState<string | null>(null);
   const anim = useRef(new Animated.Value(0)).current;
@@ -87,7 +90,7 @@ export function EventToasts() {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors, theme) => ({
   wrap: { position: 'absolute', left: spacing.md, right: spacing.md, alignItems: 'center' },
   toast: {
     flexDirection: 'row',
@@ -98,6 +101,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     borderRadius: radius.lg,
     backgroundColor: colors.text,
-    ...shadow.raised,
+    ...theme.shadow.raised,
   },
-});
+}));

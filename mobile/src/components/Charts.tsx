@@ -1,8 +1,9 @@
 import { useState } from 'react';
-import { LayoutChangeEvent, Platform, StyleSheet, View } from 'react-native';
+import { LayoutChangeEvent, Platform, View } from 'react-native';
 import Svg, { Line, Path, Rect, Text as SvgText } from 'react-native-svg';
 import { AppText } from './AppText';
-import { colors, radius, spacing } from '../theme';
+import { radius, spacing } from '../theme';
+import { makeStyles, useTheme } from '../theming';
 
 export interface TrendPoint {
   label: string;
@@ -42,6 +43,8 @@ interface TrendProps {
  * container, and x-axis labels are thinned so they never overlap on phones.
  */
 export function TrendChart({ data, height = 180, primaryLabel, secondaryLabel }: TrendProps) {
+  const styles = useStyles();
+  const { colors } = useTheme();
   const [width, setWidth] = useState(0);
   const onLayout = (e: LayoutChangeEvent) => setWidth(e.nativeEvent.layout.width);
 
@@ -110,6 +113,7 @@ export function TrendChart({ data, height = 180, primaryLabel, secondaryLabel }:
 }
 
 function LegendItem({ color, label, line }: { color: string; label: string; line?: boolean }) {
+  const styles = useStyles();
   return (
     <View style={styles.legendItem}>
       <View style={[line ? styles.legendLine : styles.legendDot, { backgroundColor: color }]} />
@@ -122,6 +126,7 @@ function LegendItem({ color, label, line }: { color: string; label: string; line
 
 /** Labelled horizontal bars for breakdowns (expense categories, payment mix). */
 export function BarList({ items, format }: { items: { label: string; value: number }[]; format: (v: number) => string }) {
+  const styles = useStyles();
   const max = Math.max(1, ...items.map((i) => i.value));
   return (
     <View style={styles.barList}>
@@ -142,7 +147,7 @@ export function BarList({ items, format }: { items: { label: string; value: numb
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => ({
   legend: { flexDirection: 'row', gap: spacing.md, marginTop: spacing.sm },
   legendItem: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs + 2 },
   legendDot: { width: 10, height: 10, borderRadius: 3 },
@@ -152,4 +157,4 @@ const styles = StyleSheet.create({
   barHead: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   track: { height: 8, borderRadius: radius.pill, backgroundColor: colors.surfaceAlt, overflow: 'hidden' },
   fill: { height: '100%', borderRadius: radius.pill, backgroundColor: colors.primary },
-});
+}));

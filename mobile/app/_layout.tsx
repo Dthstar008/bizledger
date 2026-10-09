@@ -3,24 +3,26 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { router, Stack, useSegments } from 'expo-router';
 import { useEffect } from 'react';
+import * as SplashScreen from 'expo-splash-screen';
+import {
+  useFonts,
+  PlusJakartaSans_400Regular,
+  PlusJakartaSans_500Medium,
+  PlusJakartaSans_600SemiBold,
+  PlusJakartaSans_700Bold,
+  PlusJakartaSans_800ExtraBold,
+} from '@expo-google-fonts/plus-jakarta-sans';
 import { useAuthStore } from '../src/store/auth-store';
 import { ServerWakeBanner } from '../src/components/ServerWakeBanner';
 import { EventToasts } from '../src/components/Toast';
 import { UpdateGate } from '../src/components/UpdateGate';
 import { checkAppVersion, warmUpServer } from '../src/api/client';
 import { useOfflineSync } from '../src/offline/useOfflineSync';
-import { colors, type } from '../src/theme';
+import { type } from '../src/theme';
+import { ThemeProvider, useTheme } from '../src/theming';
 
-// One header style for every pushed screen, so none of them looks like a different app.
-const pushed = {
-  headerShown: true,
-  headerShadowVisible: false,
-  headerStyle: { backgroundColor: colors.background },
-  headerTintColor: colors.text,
-  headerTitleStyle: { fontSize: type.heading.fontSize, fontWeight: type.heading.fontWeight },
-  headerBackButtonDisplayMode: 'minimal' as const,
-  contentStyle: { backgroundColor: colors.background },
-};
+// Keep the splash up until the brand font is ready, so text never jumps fonts.
+SplashScreen.preventAutoHideAsync().catch(() => undefined);
 
 const PUBLIC_ROUTES = ['login', 'register', 'onboarding', 'forgot-password'];
 
@@ -41,6 +43,18 @@ function AuthGate() {
 }
 
 export default function RootLayout() {
+  const [fontsLoaded, fontError] = useFonts({
+    PlusJakartaSans_400Regular,
+    PlusJakartaSans_500Medium,
+    PlusJakartaSans_600SemiBold,
+    PlusJakartaSans_700Bold,
+    PlusJakartaSans_800ExtraBold,
+  });
+  const ready = fontsLoaded || !!fontError;
+  useEffect(() => {
+    if (ready) SplashScreen.hideAsync().catch(() => undefined);
+  }, [ready]);
+
   // Sends sales and expenses saved offline once the connection is back.
   useOfflineSync();
   // Begin waking the hosted server while the user is still on the login screen.
@@ -50,10 +64,33 @@ export default function RootLayout() {
     void checkAppVersion();
   }, []);
 
+  // If the font fails to load the app still starts, in the system font.
+  if (!ready) return null;
+
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
+    <ThemeProvider>
+      <AppShell />
+    </ThemeProvider>
+  );
+}
+
+function AppShell() {
+  const { colors, scheme } = useTheme();
+  // One header style for every pushed screen, so none of them looks like a different app.
+  const pushed = {
+    headerShown: true,
+    headerShadowVisible: false,
+    headerStyle: { backgroundColor: colors.background },
+    headerTintColor: colors.text,
+    headerTitleStyle: { fontFamily: type.heading.fontFamily, fontSize: type.heading.fontSize },
+    headerBackButtonDisplayMode: 'minimal' as const,
+    contentStyle: { backgroundColor: colors.background },
+  };
+
+  return (
+    <GestureHandlerRootView style={{ flex: 1, backgroundColor: colors.background }}>
       <SafeAreaProvider>
-        <StatusBar style="dark" />
+        <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
         <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.background } }}>
           <Stack.Screen name="index" />
           <Stack.Screen name="onboarding" />

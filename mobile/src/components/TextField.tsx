@@ -1,8 +1,9 @@
 import { ComponentProps, forwardRef, useState } from 'react';
-import { Pressable, StyleSheet, TextInput, TextInputProps, View } from 'react-native';
+import { Pressable, TextInput, TextInputProps, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { AppText } from './AppText';
-import { colors, radius, spacing, touch } from '../theme';
+import { control, radius, spacing, type } from '../theme';
+import { makeStyles, useTheme } from '../theming';
 
 interface Props extends TextInputProps {
   label: string;
@@ -15,28 +16,28 @@ interface Props extends TextInputProps {
   prefix?: string;
 }
 
+/**
+ * Label above a 56dp field (readable at a glance, never hidden behind the
+ * typed value), with helper or error text below. Errors are always written
+ * out, never shown only as a red border.
+ */
 export const TextField = forwardRef<TextInput, Props>(function TextField(
   { label, error, helper, secureToggle, leftIcon, prefix, editable = true, style, onFocus, onBlur, secureTextEntry, ...inputProps },
   ref,
 ) {
+  const styles = useStyles();
+  const { colors } = useTheme();
   const [focused, setFocused] = useState(false);
   const [hidden, setHidden] = useState(true);
 
   return (
     <View style={styles.container}>
-      <AppText variant="label" tone="muted">
+      <AppText variant="label" tone={error ? 'danger' : 'muted'}>
         {label}
       </AppText>
-      <View
-        style={[
-          styles.field,
-          focused && styles.focused,
-          !!error && styles.errored,
-          !editable && styles.disabled,
-        ]}
-      >
-        {leftIcon ? <Ionicons name={leftIcon} size={18} color={colors.textMuted} /> : null}
-        {prefix ? <AppText tone="muted">{prefix}</AppText> : null}
+      <View style={[styles.field, focused && styles.focused, !!error && styles.errored, !editable && styles.disabled]}>
+        {leftIcon ? <Ionicons name={leftIcon} size={20} color={focused ? colors.primary : colors.textMuted} /> : null}
+        {prefix ? <AppText variant="bodyStrong" tone="muted">{prefix}</AppText> : null}
         <TextInput
           ref={ref}
           style={[styles.input, style]}
@@ -44,6 +45,7 @@ export const TextField = forwardRef<TextInput, Props>(function TextField(
           editable={editable}
           secureTextEntry={secureToggle ? hidden : secureTextEntry}
           accessibilityLabel={label}
+          accessibilityHint={error ?? helper}
           onFocus={(e) => {
             setFocused(true);
             onFocus?.(e);
@@ -59,19 +61,22 @@ export const TextField = forwardRef<TextInput, Props>(function TextField(
             onPress={() => setHidden((h) => !h)}
             accessibilityRole="button"
             accessibilityLabel={hidden ? 'Show password' : 'Hide password'}
-            hitSlop={8}
+            hitSlop={10}
             style={styles.eye}
           >
-            <Ionicons name={hidden ? 'eye-outline' : 'eye-off-outline'} size={20} color={colors.textMuted} />
+            <Ionicons name={hidden ? 'eye-outline' : 'eye-off-outline'} size={22} color={colors.textMuted} />
           </Pressable>
         ) : null}
       </View>
       {error ? (
-        <AppText variant="caption" tone="danger" accessibilityLiveRegion="polite">
-          {error}
-        </AppText>
+        <View style={styles.message}>
+          <Ionicons name="alert-circle" size={14} color={colors.danger} />
+          <AppText variant="caption" tone="danger" accessibilityLiveRegion="polite" style={styles.flex}>
+            {error}
+          </AppText>
+        </View>
       ) : helper ? (
-        <AppText variant="caption" tone="subtle">
+        <AppText variant="caption" tone="muted">
           {helper}
         </AppText>
       ) : null}
@@ -79,29 +84,31 @@ export const TextField = forwardRef<TextInput, Props>(function TextField(
   );
 });
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((c) => ({
   container: { gap: spacing.xs + 2, minWidth: 0 },
   field: {
-    minHeight: touch.min + 4,
+    minHeight: control.input,
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.borderStrong,
-    borderRadius: radius.md,
+    backgroundColor: c.surface,
+    borderWidth: 1.5,
+    borderColor: c.borderStrong,
+    borderRadius: radius.sm,
     paddingHorizontal: spacing.md - 2,
   },
-  focused: { borderColor: colors.primary, borderWidth: 1.5 },
-  errored: { borderColor: colors.danger },
-  disabled: { backgroundColor: colors.surfaceAlt },
+  focused: { borderColor: c.primary },
+  errored: { borderColor: c.danger },
+  disabled: { backgroundColor: c.surfaceAlt },
   input: {
+    ...type.body,
     flex: 1,
     // Lets the input shrink in narrow rows; on web an <input> otherwise keeps its intrinsic width.
     minWidth: 0,
-    fontSize: 16,
-    color: colors.text,
+    color: c.text,
     paddingVertical: spacing.sm + 2,
   },
   eye: { padding: spacing.xs },
-});
+  message: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.xs },
+  flex: { flex: 1 },
+}));

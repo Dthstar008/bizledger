@@ -1,16 +1,20 @@
 import { Text, TextProps } from 'react-native';
-import { colors, type, TypeVariant } from '../theme';
+import { Colors, type, TypeVariant } from '../theme';
+import { useTheme } from '../theming';
 
-export type Tone = 'default' | 'muted' | 'subtle' | 'primary' | 'danger' | 'warning' | 'inverse';
+export type Tone = 'default' | 'muted' | 'subtle' | 'primary' | 'gold' | 'danger' | 'warning' | 'info' | 'inverse';
 
-const toneColor: Record<Tone, string> = {
-  default: colors.text,
-  muted: colors.textMuted,
-  subtle: colors.textSubtle,
-  primary: colors.primary,
-  danger: colors.danger,
-  warning: colors.warning,
-  inverse: colors.onPrimary,
+const toneKey: Record<Tone, keyof Colors> = {
+  default: 'text',
+  muted: 'textMuted',
+  subtle: 'textSubtle',
+  primary: 'primary',
+  // Gold as text is always the deep variant (readable on light surfaces).
+  gold: 'goldDeep',
+  danger: 'danger',
+  warning: 'warning',
+  info: 'info',
+  inverse: 'onPrimary',
 };
 
 interface Props extends TextProps {
@@ -21,5 +25,6 @@ interface Props extends TextProps {
 
 /** The one text component: every piece of copy picks a size from the type scale and a tone. */
 export function AppText({ variant = 'body', tone = 'default', align, style, ...rest }: Props) {
-  return <Text style={[type[variant], { color: toneColor[tone] }, align ? { textAlign: align } : null, style]} {...rest} />;
+  const { colors } = useTheme();
+  return <Text style={[type[variant], { color: colors[toneKey[tone]] }, align ? { textAlign: align } : null, style]} {...rest} />;
 }

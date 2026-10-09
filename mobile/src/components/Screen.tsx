@@ -3,7 +3,8 @@ import { KeyboardAvoidingView, Platform, RefreshControl, ScrollView, StyleSheet,
 import { Edge, SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSegments } from 'expo-router';
 import { ConnectionBar } from './ConnectionBar';
-import { colors, layout, spacing } from '../theme';
+import { layout, spacing } from '../theme';
+import { makeStyles, useTheme } from '../theming';
 
 interface Props extends PropsWithChildren {
   scroll?: boolean;
@@ -30,6 +31,8 @@ interface Props extends PropsWithChildren {
  * so buttons like "Complete sale" are never hidden behind the navigation bar.
  */
 export function Screen({ children, scroll = true, refreshing, onRefresh, header, footer, edges = ['top'], contentStyle, connectionBar = true }: Props) {
+  const styles = useStyles();
+  const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const inTabs = useSegments()[0] === '(tabs)';
   const bottomInset = inTabs || edges.includes('bottom') ? 0 : insets.bottom;
@@ -67,7 +70,7 @@ export function Screen({ children, scroll = true, refreshing, onRefresh, header,
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => ({
   safe: { flex: 1, backgroundColor: colors.background },
   flex: { flex: 1 },
   scrollContent: { flexGrow: 1, paddingBottom: spacing.xl },
@@ -81,4 +84,4 @@ const styles = StyleSheet.create({
     borderTopColor: colors.border,
   },
   footer: { paddingHorizontal: spacing.md, paddingVertical: spacing.sm + 4, gap: spacing.sm },
-});
+}));

@@ -5,7 +5,8 @@ import { AppText } from './AppText';
 import { LedgerEvent } from '../api/types';
 import { formatNaira } from '../utils/currency';
 import { capitalise, relativeTime } from '../utils/format';
-import { colors, radius, spacing } from '../theme';
+import { Colors, radius, spacing } from '../theme';
+import { makeStyles, useTheme } from '../theming';
 
 type Icon = ComponentProps<typeof Ionicons>['name'];
 type Tone = 'in' | 'out' | 'neutral' | 'warning';
@@ -91,8 +92,9 @@ export function describeEvent(e: LedgerEvent): Described {
   }
 }
 
-const toneColor: Record<Tone, string> = { in: colors.primary, out: colors.danger, neutral: colors.text, warning: colors.warning };
-const toneBg: Record<Tone, string> = { in: colors.primaryMuted, out: colors.dangerMuted, neutral: colors.surfaceAlt, warning: colors.warningMuted };
+// Money in = green, out = red, owed / attention = gold; each event also has its own icon.
+const toneColor: Record<Tone, keyof Colors> = { in: 'primary', out: 'danger', neutral: 'text', warning: 'goldDeep' };
+const toneBg: Record<Tone, keyof Colors> = { in: 'primaryMuted', out: 'dangerMuted', neutral: 'surfaceAlt', warning: 'goldMuted' };
 
 interface Props {
   event: LedgerEvent;
@@ -102,13 +104,15 @@ interface Props {
 }
 
 export function ActivityItem({ event, actorName, last }: Props) {
+  const styles = useStyles();
+  const { colors } = useTheme();
   const d = describeEvent(event);
   const who = event.metadata?.actorId ? actorName?.(String(event.metadata.actorId)) : undefined;
   const meta = [relativeTime(event.createdAt), who].filter(Boolean).join(' · ');
   return (
     <View style={[styles.row, !last && styles.separator]} accessible accessibilityLabel={`${d.title}. ${d.detail ?? ''} ${d.amount ?? ''}. ${meta}`}>
-      <View style={[styles.icon, { backgroundColor: toneBg[d.tone] }]}>
-        <Ionicons name={d.icon} size={18} color={toneColor[d.tone]} />
+      <View style={[styles.icon, { backgroundColor: colors[toneBg[d.tone]] }]}>
+        <Ionicons name={d.icon} size={18} color={colors[toneColor[d.tone]]} />
       </View>
       <View style={styles.text}>
         <AppText variant="bodyStrong" numberOfLines={2}>
@@ -124,7 +128,7 @@ export function ActivityItem({ event, actorName, last }: Props) {
         </AppText>
       </View>
       {d.amount ? (
-        <AppText variant="bodyStrong" style={{ color: toneColor[d.tone] }}>
+        <AppText variant="bodyStrong" style={{ color: colors[toneColor[d.tone]] }}>
           {d.tone === 'out' ? `−${d.amount}` : d.amount}
         </AppText>
       ) : null}
@@ -132,9 +136,9 @@ export function ActivityItem({ event, actorName, last }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => ({
   row: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm + 4, paddingVertical: spacing.sm + 2 },
   separator: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
   icon: { width: 36, height: 36, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center' },
   text: { flex: 1, gap: 2 },
-});
+}));
