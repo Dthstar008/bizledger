@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Screen } from '../src/components/Screen';
@@ -12,7 +12,9 @@ import { ListRow } from '../src/components/ListRow';
 import { Badge } from '../src/components/Badge';
 import { Avatar, ErrorState, InlineError, SkeletonList, confirm } from '../src/components/Feedback';
 import { apiErrorMessage } from '../src/api/client';
-import { createEmployee, listEmployees, removeEmployee } from '../src/api/employees';
+import { createEmployee, listEmployees, removeEmployee, resetEmployeePassword } from '../src/api/employees';
+import { PasswordRules } from '../src/components/PasswordRules';
+import { isStrongPassword } from '../src/utils/password';
 import { createBranch, listBranches } from '../src/api/branches';
 import { Branch, Employee } from '../src/api/types';
 import { publish } from '../src/events/bus';
@@ -34,9 +36,8 @@ function StaffForm({ branches, onDone }: { branches: Branch[]; onDone: () => voi
   const errors = {
     name: touched && !name.trim() ? 'Enter their name' : undefined,
     email: touched && !isEmail(email) ? 'Enter a valid email address' : undefined,
-    password: touched && password.length < 6 ? 'Use at least 6 characters' : undefined,
   };
-  const valid = !!name.trim() && isEmail(email) && password.length >= 6;
+  const valid = !!name.trim() && isEmail(email) && isStrongPassword(password, email);
 
   async function save() {
     setTouched(true);
@@ -77,9 +78,9 @@ function StaffForm({ branches, onDone }: { branches: Branch[]; onDone: () => voi
         secureTextEntry
         secureToggle
         autoCapitalize="none"
-        helper="At least 6 characters. Share it with them privately."
-        error={errors.password}
+        helper="Share it with them privately."
       />
+      <PasswordRules password={password} email={email} showErrors={touched} />
       {branches.length > 1 ? (
         <>
           <AppText variant="label" tone="muted">
@@ -141,11 +142,56 @@ function BranchForm({ onDone }: { onDone: () => void }) {
   );
 }
 
+/** Owner sets a new password for a staff member who has forgotten theirs. */
+function ResetStaffPasswordForm({ employee, onDone }: { employee: Employee; onDone: (changed: boolean) => void }) {
+  const [password, setPassword] = useState('');
+  const [touched, setTouched] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function save() {
+    setTouched(true);
+    if (!isStrongPassword(password, employee.email)) return;
+    setSaving(true);
+    setError(null);
+    try {
+      await resetEmployeePassword(employee.id, password);
+      onDone(true);
+    } catch (err) {
+      setError(apiErrorMessage(err));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <View style={styles.resetForm}>
+      {error ? <InlineError message={error} /> : null}
+      <TextField
+        label={`New password for ${employee.name ?? employee.email}`}
+        value={password}
+        onChangeText={setPassword}
+        secureTextEntry
+        secureToggle
+        autoCapitalize="none"
+        helper="They'll be signed out and must use this password. Share it with them privately."
+      />
+      <PasswordRules password={password} email={employee.email} showErrors={touched} />
+      <View style={styles.row}>
+        <Button label="Cancel" variant="secondary" onPress={() => onDone(false)} style={styles.flexButton} />
+        <Button label="Set password" icon="key-outline" onPress={save} loading={saving} style={styles.flexButton} />
+      </View>
+    </View>
+  );
+}
+
 export default function TeamScreen() {
   const branches = useAuthStore((s) => s.branches);
   const setBranches = useAuthStore((s) => s.setBranches);
   const [addingStaff, setAddingStaff] = useState(false);
   const [addingBranch, setAddingBranch] = useState(false);
+  const [resettingId, setResettingId] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const team = useResource(async () => {
@@ -195,6 +241,11 @@ export default function TeamScreen() {
   return (
     <Screen edges={[]} refreshing={team.refreshing} onRefresh={team.reload}>
       {error ? <InlineError message={error} /> : null}
+      {notice ? (
+        <AppText variant="caption" tone="primary">
+          {notice}
+        </AppText>
+      ) : null}
       {team.error ? <InlineError message={team.error} onRetry={team.reload} /> : null}
 
       <Section
@@ -204,8 +255,8 @@ export default function TeamScreen() {
       >
         {addingStaff ? <StaffForm branches={branches} onDone={() => setAddingStaff(false)} /> : null}
         {employees.map((e, i) => (
+          <Fragment key={e.id}>
           <ListRow
-            key={e.id}
             title={e.name ?? e.email}
             subtitle={e.role === 'owner' ? e.email : `${e.email} · ${branchName(e.branchId)}`}
             leading={<Avatar name={e.name ?? e.email} />}
@@ -213,11 +264,31 @@ export default function TeamScreen() {
               e.role === 'owner' ? (
                 <Badge label="Owner" tone="success" />
               ) : (
-                <IconButton icon="trash-outline" tone="danger" accessibilityLabel={`Remove ${e.name ?? e.email}`} onPress={() => remove(e)} />
+                <View style={styles.actions}>
+                  <IconButton
+                    icon="key-outline"
+                    accessibilityLabel={`Reset password for ${e.name ?? e.email}`}
+                    onPress={() => {
+                      setNotice(null);
+                      setResettingId(resettingId === e.id ? null : e.id);
+                    }}
+                  />
+                  <IconButton icon="trash-outline" tone="danger" accessibilityLabel={`Remove ${e.name ?? e.email}`} onPress={() => remove(e)} />
+                </View>
               )
             }
-            last={i === employees.length - 1}
+            last={i === employees.length - 1 && resettingId !== e.id}
           />
+          {resettingId === e.id ? (
+            <ResetStaffPasswordForm
+              employee={e}
+              onDone={(changed) => {
+                setResettingId(null);
+                if (changed) setNotice(`New password set for ${e.name ?? e.email}. They have been signed out.`);
+              }}
+            />
+          ) : null}
+          </Fragment>
         ))}
       </Section>
 
@@ -248,6 +319,8 @@ export default function TeamScreen() {
 
 const styles = StyleSheet.create({
   form: { gap: spacing.md, paddingBottom: spacing.sm },
+  resetForm: { gap: spacing.md, paddingVertical: spacing.sm },
+  actions: { flexDirection: 'row', alignItems: 'center' },
   row: { flexDirection: 'row', gap: spacing.sm },
   flexButton: { flex: 1, alignSelf: 'auto' },
   icon: { width: 40, height: 40, borderRadius: radius.md, backgroundColor: colors.primaryMuted, alignItems: 'center', justifyContent: 'center' },

@@ -32,6 +32,35 @@ export class User {
   @Column({ type: 'timestamptz', nullable: true })
   ageConfirmedAt?: Date;
 
+  /**
+   * When the user accepted the Terms and Privacy Policy, and which version.
+   * Null for accounts created before consent was collected, or by an older
+   * app that didn't send it; never backfilled.
+   */
+  @Column({ type: 'timestamptz', nullable: true })
+  termsAcceptedAt?: Date | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  termsVersion?: string | null;
+
+  /**
+   * Bumped whenever the password changes. Tokens carry the version they were
+   * issued with, so a reset or change signs out every other session.
+   */
+  @Column({ type: 'int', default: 0 })
+  tokenVersion: number;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  passwordChangedAt?: Date | null;
+
+  /** Consecutive failed sign-ins; reset on success. */
+  @Column({ type: 'int', default: 0 })
+  failedLoginCount: number;
+
+  /** Sign-in is refused until this time after too many failed attempts. */
+  @Column({ type: 'timestamptz', nullable: true })
+  lockedUntil?: Date | null;
+
   @ManyToOne(() => Business, (business) => business.users, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'businessId' })
   business: Business;

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Linking, Pressable, StyleSheet, View } from 'react-native';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { AuthLayout } from '../src/components/AuthLayout';
@@ -7,7 +7,9 @@ import { AppText } from '../src/components/AppText';
 import { TextField } from '../src/components/TextField';
 import { Button } from '../src/components/Button';
 import { InlineError } from '../src/components/Feedback';
-import { registerBusiness } from '../src/api/auth';
+import { legalUrls, registerBusiness } from '../src/api/auth';
+import { PasswordRules } from '../src/components/PasswordRules';
+import { isStrongPassword } from '../src/utils/password';
 import { apiErrorMessage } from '../src/api/client';
 import { useAuthStore } from '../src/store/auth-store';
 import { isEmail } from '../src/utils/validate';
@@ -21,6 +23,7 @@ export default function RegisterScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmedAdult, setConfirmedAdult] = useState(false);
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [touched, setTouched] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -28,10 +31,10 @@ export default function RegisterScreen() {
   const errors = {
     businessName: touched && !businessName.trim() ? 'Enter your business name' : undefined,
     email: touched && !isEmail(email) ? 'Enter a valid email address' : undefined,
-    password: touched && password.length < 6 ? 'Use at least 6 characters' : undefined,
     adult: touched && !confirmedAdult ? 'You must be 18 or older to create an account' : undefined,
+    terms: touched && !acceptedTerms ? 'Please accept the Terms and Privacy Policy to continue' : undefined,
   };
-  const valid = businessName.trim() && isEmail(email) && password.length >= 6 && confirmedAdult;
+  const valid = businessName.trim() && isEmail(email) && isStrongPassword(password, email) && confirmedAdult && acceptedTerms;
 
   async function handleRegister() {
     setTouched(true);
@@ -46,6 +49,7 @@ export default function RegisterScreen() {
         email: email.trim(),
         password,
         confirmedAdult,
+        acceptedTerms,
       });
       setAuth({ token: res.accessToken, business: res.business, user: res.user });
       router.replace('/(tabs)');
@@ -116,9 +120,9 @@ export default function RegisterScreen() {
         textContentType="newPassword"
         value={password}
         onChangeText={setPassword}
-        placeholder="At least 6 characters"
-        error={errors.password}
+        placeholder="Choose a password"
       />
+      <PasswordRules password={password} email={email} showErrors={touched} />
       <Pressable
         style={styles.checkRow}
         onPress={() => setConfirmedAdult((v) => !v)}
@@ -133,6 +137,34 @@ export default function RegisterScreen() {
       {errors.adult ? (
         <AppText variant="caption" tone="danger">
           {errors.adult}
+        </AppText>
+      ) : null}
+      <View style={styles.checkRow}>
+        <Pressable
+          onPress={() => setAcceptedTerms((v) => !v)}
+          accessibilityRole="checkbox"
+          accessibilityState={{ checked: acceptedTerms }}
+          accessibilityLabel="I agree to the Terms of Service and Privacy Policy"
+          hitSlop={8}
+        >
+          <View style={[styles.box, acceptedTerms && styles.boxChecked, !!errors.terms && styles.boxError]}>
+            {acceptedTerms ? <Ionicons name="checkmark" size={16} color={colors.onPrimary} /> : null}
+          </View>
+        </Pressable>
+        <AppText style={styles.flex}>
+          I agree to the{' '}
+          <AppText tone="primary" variant="bodyStrong" onPress={() => Linking.openURL(legalUrls.terms)} accessibilityRole="link">
+            Terms of Service
+          </AppText>{' '}
+          and{' '}
+          <AppText tone="primary" variant="bodyStrong" onPress={() => Linking.openURL(legalUrls.privacy)} accessibilityRole="link">
+            Privacy Policy
+          </AppText>
+        </AppText>
+      </View>
+      {errors.terms ? (
+        <AppText variant="caption" tone="danger">
+          {errors.terms}
         </AppText>
       ) : null}
       <View style={styles.action}>

@@ -10,14 +10,16 @@ export const colors = {
   text: '#12181F',
   // Slightly darker than before so small muted text meets WCAG AA on the background.
   textMuted: '#5E6978',
-  textSubtle: '#8A94A2',
+  // Placeholders and chart labels: at least 4.7:1 on every background (was #8A94A2, 2.9:1).
+  textSubtle: '#646D7A',
   primary: '#0F7A4B',
   primaryPressed: '#0B6440',
   primaryMuted: '#E6F4ED',
   onPrimary: '#FFFFFF',
   danger: '#C0392B',
   dangerMuted: '#FBEAE8',
-  warning: '#B7791F',
+  // Readable as text on the background (5.2:1) and on warningMuted badges (5.1:1); was #B7791F, 3.4:1.
+  warning: '#8F5E12',
   warningMuted: '#FCF3E3',
   overlay: 'rgba(18, 24, 31, 0.45)',
 };

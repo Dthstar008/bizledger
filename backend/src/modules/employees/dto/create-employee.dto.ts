@@ -1,4 +1,5 @@
-import { IsEmail, IsNotEmpty, IsOptional, IsString, IsUUID, MaxLength, MinLength } from 'class-validator';
+import { IsEmail, IsNotEmpty, IsOptional, IsString, IsUUID, MaxLength } from 'class-validator';
+import { IsStrongPassword } from '../../../common/password-policy';
 
 export class CreateEmployeeDto {
   @IsString()
@@ -9,11 +10,17 @@ export class CreateEmployeeDto {
   @IsEmail()
   email: string;
 
-  @MinLength(6)
+  @IsStrongPassword()
   password: string;
 
   /** Defaults to the business's default branch when omitted. */
   @IsOptional()
   @IsUUID()
   branchId?: string;
+}
+
+/** An owner setting a new password for a staff member (checked against the staff email in the service). */
+export class ResetEmployeePasswordDto {
+  @IsString()
+  password: string;
 }

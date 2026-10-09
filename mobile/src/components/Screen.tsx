@@ -1,6 +1,7 @@
 import { PropsWithChildren, ReactNode } from 'react';
 import { KeyboardAvoidingView, Platform, RefreshControl, ScrollView, StyleSheet, View, ViewStyle } from 'react-native';
-import { Edge, SafeAreaView } from 'react-native-safe-area-context';
+import { Edge, SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useSegments } from 'expo-router';
 import { colors, layout, spacing } from '../theme';
 
 interface Props extends PropsWithChildren {
@@ -19,12 +20,21 @@ interface Props extends PropsWithChildren {
 /**
  * Standard screen shell: safe area, keyboard avoidance, pull-to-refresh, and a
  * centred max-width column so tablets don't stretch content edge to edge.
+ *
+ * Android draws apps edge to edge, under the system navigation buttons. Tab
+ * screens are covered by the tab bar, which reserves that space itself; every
+ * other screen adds the bottom inset below its footer (or its last content),
+ * so buttons like "Complete sale" are never hidden behind the navigation bar.
  */
 export function Screen({ children, scroll = true, refreshing, onRefresh, header, footer, edges = ['top'], contentStyle }: Props) {
+  const insets = useSafeAreaInsets();
+  const inTabs = useSegments()[0] === '(tabs)';
+  const bottomInset = inTabs || edges.includes('bottom') ? 0 : insets.bottom;
+
   const body = scroll ? (
     <ScrollView
       style={styles.flex}
-      contentContainerStyle={styles.scrollContent}
+      contentContainerStyle={[styles.scrollContent, !footer && bottomInset ? { paddingBottom: spacing.xl + bottomInset } : null]}
       keyboardShouldPersistTaps="handled"
       refreshControl={
         onRefresh ? <RefreshControl refreshing={!!refreshing} onRefresh={onRefresh} tintColor={colors.primary} colors={[colors.primary]} /> : undefined
@@ -33,7 +43,9 @@ export function Screen({ children, scroll = true, refreshing, onRefresh, header,
       <View style={[styles.column, styles.content, contentStyle]}>{children}</View>
     </ScrollView>
   ) : (
-    <View style={[styles.flex, styles.column, styles.content, contentStyle]}>{children}</View>
+    <View style={[styles.flex, styles.column, styles.content, !footer && bottomInset ? { paddingBottom: bottomInset } : null, contentStyle]}>
+      {children}
+    </View>
   );
 
   return (
@@ -42,7 +54,7 @@ export function Screen({ children, scroll = true, refreshing, onRefresh, header,
         {header ? <View style={[styles.column, styles.header]}>{header}</View> : null}
         {body}
         {footer ? (
-          <View style={styles.footerBar}>
+          <View style={[styles.footerBar, bottomInset ? { paddingBottom: bottomInset } : null]}>
             <View style={[styles.column, styles.footer]}>{footer}</View>
           </View>
         ) : null}

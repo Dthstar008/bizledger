@@ -2,15 +2,28 @@ import './database/pg-types';
 import { NestFactory } from '@nestjs/core';
 import { Logger, ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import compression from 'compression';
+import helmet from 'helmet';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
   const config = app.get(ConfigService);
 
   // Hosts send SIGTERM on every redeploy; this lets the DB pool close cleanly.
   app.enableShutdownHooks();
+
+  // Behind Render's proxy every request would otherwise appear to come from the
+  // proxy, so per-IP rate limits would throttle all users together.
+  const trustProxy = config.get<number>('trustProxy') ?? 0;
+  if (trustProxy > 0) app.set('trust proxy', trustProxy);
+
+  // Standard security headers (HSTS, nosniff, frame and referrer policies, no
+  // X-Powered-By). Product photos are fetched by the app from another origin
+  // during web development, so resources may be shared cross-origin; they are
+  // still protected by the Authorization header.
+  app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
 
   app.use(compression());
 

@@ -6,7 +6,8 @@ import { useEffect } from 'react';
 import { useAuthStore } from '../src/store/auth-store';
 import { ServerWakeBanner } from '../src/components/ServerWakeBanner';
 import { EventToasts } from '../src/components/Toast';
-import { warmUpServer } from '../src/api/client';
+import { UpdateGate } from '../src/components/UpdateGate';
+import { checkAppVersion, warmUpServer } from '../src/api/client';
 import { colors, type } from '../src/theme';
 
 // One header style for every pushed screen, so none of them looks like a different app.
@@ -20,7 +21,7 @@ const pushed = {
   contentStyle: { backgroundColor: colors.background },
 };
 
-const PUBLIC_ROUTES = ['login', 'register', 'onboarding'];
+const PUBLIC_ROUTES = ['login', 'register', 'onboarding', 'forgot-password'];
 
 /**
  * Sends any protected screen back to login when there is no session: on a
@@ -42,6 +43,8 @@ export default function RootLayout() {
   // Begin waking the hosted server while the user is still on the login screen.
   useEffect(() => {
     warmUpServer();
+    // Lets the server retire or nudge old app versions; harmless when nothing is configured.
+    void checkAppVersion();
   }, []);
 
   return (
@@ -53,6 +56,7 @@ export default function RootLayout() {
           <Stack.Screen name="onboarding" />
           <Stack.Screen name="login" />
           <Stack.Screen name="register" />
+          <Stack.Screen name="forgot-password" />
           <Stack.Screen name="(tabs)" />
           <Stack.Screen name="sale/new" options={{ ...pushed, presentation: 'modal', title: 'New sale' }} />
           <Stack.Screen name="product/[id]" options={{ ...pushed, title: 'Product' }} />
@@ -63,10 +67,12 @@ export default function RootLayout() {
           <Stack.Screen name="activity" options={{ ...pushed, title: 'Activity' }} />
           <Stack.Screen name="team" options={{ ...pushed, title: 'Team & branches' }} />
           <Stack.Screen name="analytics" options={{ ...pushed, title: 'Analytics' }} />
+          <Stack.Screen name="account" options={{ ...pushed, title: 'Account' }} />
         </Stack>
         <AuthGate />
         <ServerWakeBanner />
         <EventToasts />
+        <UpdateGate />
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );

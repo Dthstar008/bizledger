@@ -5,7 +5,7 @@ import { Roles } from '../../common/roles.decorator';
 import { Role } from '../../entities';
 import { CurrentBusinessId, CurrentUserId } from '../../common/current-business.decorator';
 import { EmployeesService } from './employees.service';
-import { CreateEmployeeDto } from './dto/create-employee.dto';
+import { CreateEmployeeDto, ResetEmployeePasswordDto } from './dto/create-employee.dto';
 
 @Controller('employees')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -21,6 +21,16 @@ export class EmployeesController {
   @Post()
   create(@CurrentBusinessId() businessId: string, @Body() dto: CreateEmployeeDto) {
     return this.employeesService.create(businessId, dto);
+  }
+
+  @Post(':id/reset-password')
+  @HttpCode(204)
+  resetPassword(
+    @CurrentBusinessId() businessId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: ResetEmployeePasswordDto,
+  ) {
+    return this.employeesService.resetPassword(businessId, id, dto);
   }
 
   @Delete(':id')

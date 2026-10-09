@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import { Pressable, StyleSheet, TextInput, View } from 'react-native';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { AuthLayout } from '../src/components/AuthLayout';
 import { AppText } from '../src/components/AppText';
 import { TextField } from '../src/components/TextField';
@@ -15,7 +15,9 @@ import { spacing } from '../src/theme';
 export default function LoginScreen() {
   const setAuth = useAuthStore((s) => s.setAuth);
   const passwordRef = useRef<TextInput>(null);
-  const [email, setEmail] = useState('');
+  // After a password reset the email comes back with a confirmation flag.
+  const params = useLocalSearchParams<{ reset?: string; email?: string }>();
+  const [email, setEmail] = useState(params.email ?? '');
   const [password, setPassword] = useState('');
   const [touched, setTouched] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -55,6 +57,11 @@ export default function LoginScreen() {
       }
     >
       {error ? <InlineError message={error} /> : null}
+      {params.reset && !error ? (
+        <AppText variant="caption" tone="primary">
+          Your password has been changed. Sign in with your new password.
+        </AppText>
+      ) : null}
       <TextField
         label="Email"
         leftIcon="mail-outline"
@@ -83,6 +90,16 @@ export default function LoginScreen() {
         placeholder="Your password"
         error={passwordError}
       />
+      <Pressable
+        onPress={() => router.push({ pathname: '/forgot-password', params: isEmail(email) ? { email: email.trim() } : {} })}
+        accessibilityRole="link"
+        hitSlop={8}
+        style={styles.forgot}
+      >
+        <AppText variant="caption" tone="primary">
+          Forgot password?
+        </AppText>
+      </Pressable>
       <View style={styles.action}>
         <Button label="Sign in" onPress={handleLogin} loading={loading} fullWidth />
       </View>
@@ -93,4 +110,5 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
   action: { marginTop: spacing.xs },
   link: { paddingVertical: spacing.sm },
+  forgot: { alignSelf: 'flex-end', paddingVertical: spacing.xs },
 });

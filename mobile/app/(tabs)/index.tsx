@@ -4,7 +4,6 @@ import { Ionicons } from '@expo/vector-icons';
 import { Screen } from '../../src/components/Screen';
 import { PageHeader } from '../../src/components/PageHeader';
 import { IconButton } from '../../src/components/IconButton';
-import { LogoutButton } from '../../src/components/LogoutButton';
 import { BranchSwitcher, useActiveBranchName } from '../../src/components/BranchSwitcher';
 import { Button } from '../../src/components/Button';
 import { Card, Section } from '../../src/components/Card';
@@ -62,7 +61,7 @@ export default function DashboardScreen() {
       actions={
         <>
           <IconButton icon="people-outline" accessibilityLabel="Team and branches" onPress={() => router.push('/team')} />
-          <LogoutButton />
+          <IconButton icon="person-circle-outline" accessibilityLabel="Account" onPress={() => router.push('/account')} />
         </>
       }
     />

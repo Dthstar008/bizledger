@@ -2,6 +2,7 @@ import axios, { InternalAxiosRequestConfig } from 'axios';
 import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 import { selectIsOwner, useAuthStore } from '../store/auth-store';
+import { APP_VERSION, compareVersions, useAppStatus } from '../store/app-status-store';
 import { ensureServerAwake, markServerContact } from './server-status';
 
 const HOSTED_API_URL = 'https://bizledger-api-iitk.onrender.com';
@@ -43,6 +44,9 @@ apiClient.interceptors.request.use(async (config) => {
   // If the server may have gone to sleep, wait for it to wake before sending,
   // rather than letting this request hit the normal 15s timeout.
   await ensureServerAwake(apiUrl);
+  // Lets the server retire old app versions (426 Upgrade Required).
+  config.headers['X-App-Version'] = APP_VERSION;
+  config.headers['X-App-Platform'] = Platform.OS;
   const state = useAuthStore.getState();
   if (state.token) {
     config.headers.Authorization = `Bearer ${state.token}`;
@@ -62,6 +66,10 @@ apiClient.interceptors.response.use(
   async (error) => {
     if (error.response) {
       markServerContact();
+      if (error.response.status === 426) {
+        const data = error.response.data as { minVersion?: string; updateUrl?: string } | undefined;
+        useAppStatus.getState().requireUpdate({ minVersion: data?.minVersion, updateUrl: data?.updateUrl });
+      }
       if (error.response.status === 401) {
         useAuthStore.getState().logout();
       }
@@ -122,8 +130,33 @@ export function apiErrorMessage(error: unknown): string {
   if (status === 403) return "Your account doesn't have access to this. Ask the business owner.";
   if (status === 404) return serverMessage && serverMessage !== 'Not Found' ? serverMessage : "We couldn't find that. It may have been deleted.";
   if (status === 413) return 'That file is too large. Choose a smaller photo.';
-  if (status === 429) return 'Too many attempts. Wait a moment and try again.';
+  if (status === 426) return 'This version of BizLedger is no longer supported. Please update the app.';
+  // Our own 429s explain themselves (e.g. how long a sign-in lockout lasts).
+  if (status === 429) return serverMessage && !/ThrottlerException/.test(serverMessage) ? serverMessage : 'Too many attempts. Wait a moment and try again.';
+  if (status === 503 && serverMessage) return serverMessage;
   if (status >= 500) return 'Something went wrong on our side. Please try again in a moment.';
   // 400/409: our API writes these messages for people, so show them (field names made readable).
   return serverMessage ? humanise(serverMessage) : 'Please check the details and try again.';
+}
+
+/**
+ * Checks the server's minimum and latest app versions at launch. Public and
+ * best-effort: if it fails, the app carries on (a 426 on any later request
+ * still triggers the update screen).
+ */
+export async function checkAppVersion() {
+  try {
+    const { data } = await axios.get<{ minVersion: string | null; latestVersion: string | null; updateUrl: string | null }>(
+      `${apiUrl}/app/config`,
+      { timeout: 15000 },
+    );
+    const status = useAppStatus.getState();
+    if (data.minVersion && compareVersions(APP_VERSION, data.minVersion) < 0) {
+      status.requireUpdate({ minVersion: data.minVersion, updateUrl: data.updateUrl });
+    } else if (data.latestVersion && compareVersions(APP_VERSION, data.latestVersion) < 0) {
+      status.offerUpdate({ latestVersion: data.latestVersion, updateUrl: data.updateUrl });
+    }
+  } catch {
+    // Offline or server asleep: not a reason to block anyone.
+  }
 }

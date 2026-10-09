@@ -5,7 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Screen } from '../../src/components/Screen';
 import { PageHeader } from '../../src/components/PageHeader';
 import { Button } from '../../src/components/Button';
-import { LogoutButton } from '../../src/components/LogoutButton';
+import { IconButton } from '../../src/components/IconButton';
 import { Card } from '../../src/components/Card';
 import { ChipGroup } from '../../src/components/Chip';
 import { SearchBar } from '../../src/components/SearchBar';
@@ -160,7 +160,7 @@ export default function SalesScreen() {
       actions={
         <>
           <Button label="New sale" icon="add" size="sm" onPress={() => router.push('/sale/new')} />
-          {!isOwner ? <LogoutButton /> : null}
+          {!isOwner ? <IconButton icon="person-circle-outline" accessibilityLabel="Account" onPress={() => router.push('/account')} /> : null}
         </>
       }
     />

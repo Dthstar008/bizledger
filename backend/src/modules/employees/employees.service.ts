@@ -3,7 +3,9 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import * as bcrypt from 'bcrypt';
 import { Branch, Role, User } from '../../entities';
-import { CreateEmployeeDto } from './dto/create-employee.dto';
+import { passwordProblem } from '../../common/password-policy';
+import { forgetCachedUser } from '../auth/jwt.strategy';
+import { CreateEmployeeDto, ResetEmployeePasswordDto } from './dto/create-employee.dto';
 
 export interface EmployeeView {
   id: string;
@@ -64,5 +66,30 @@ export class EmployeesService {
     if (user.id === actorId) throw new BadRequestException('You cannot remove your own account');
     if (user.role === Role.OWNER) throw new BadRequestException('Owner accounts cannot be removed');
     await this.users.delete({ id, businessId });
+    // Their next request is refused straight away rather than after the session cache expires.
+    forgetCachedUser(id);
+  }
+
+  /**
+   * The owner sets a new password for a staff member who has forgotten theirs
+   * (staff emails may not be real inboxes, so this doesn't rely on email).
+   * Signs the staff member out of every device.
+   */
+  async resetPassword(businessId: string, id: string, dto: ResetEmployeePasswordDto): Promise<void> {
+    const user = await this.users.findOne({ where: { id, businessId } });
+    if (!user) throw new NotFoundException('Employee not found');
+    if (user.role !== Role.STAFF) {
+      throw new BadRequestException('Owners change their own password from the Account screen');
+    }
+    const problem = passwordProblem(dto.password, { email: user.email });
+    if (problem) throw new BadRequestException(problem);
+    await this.users.update(user.id, {
+      passwordHash: await bcrypt.hash(dto.password, 10),
+      tokenVersion: (user.tokenVersion ?? 0) + 1,
+      passwordChangedAt: new Date(),
+      failedLoginCount: 0,
+      lockedUntil: null,
+    });
+    forgetCachedUser(user.id);
   }
 }
