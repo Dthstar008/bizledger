@@ -168,6 +168,47 @@ What the revamp added that needs watching, and what's still open:
 | 8 | **Time zone handling** — `timestamp` columns are read and written as UTC regardless of the server's time zone (`backend/src/database/pg-types.ts`). Before this, a server running on Lagos time showed every event an hour old and shifted date-range filters by an hour | ✅ Fixed |
 | 9 | **Ledger history indexes** — expression indexes on `metadata->>'productId'`, `'customerId'` and `'saleId'` keep product, customer and sale history fast. Expense history (`entity=expense`) has no index yet; fine while one business has few expense events, but add one if it slows down, and give any new entity type its own | ⚠️ Expense index missing |
 
+## Acquisition and retention metrics (2026-10-09)
+
+The rollout plan (`BizLedger_Rollout_Plan.pdf`, sections 7 and 16) reviews
+acquisition, activation and retention weekly. Most of it can come from data
+BizLedger already records — every write is a `ledger_events` row with
+`businessId` and `createdAt` — but where a business came from is not captured
+anywhere yet.
+
+| # | Item | Status |
+|---|---|---|
+| 1 | **Field funnel sheet.** Before sign-up the app sees nothing, so track contacts in a shared sheet: date, business, segment, area, channel, contacted by, demo (y/n), signed up (y/n), **business ID**, activated (y/n), next action, reason lost. The business ID column links field work to in-app behaviour, so activation and retention can be compared by channel | ⚠️ Not set up |
+| 2 | **Capture acquisition source at registration.** An optional "How did you hear about BizLedger?" choice (market visit, association, WhatsApp, Instagram/TikTok, referral, other) stored on the business. Needs a migration and a field on `RegisterDto` and the register screen | ⚠️ Not built |
+| 3 | **Referral codes.** A code (or tracked invite link) per business, entered at registration and stored as the referring business, so referral activation can be measured and rewards paid only for referrals that activate (rollout plan section 9) | ⚠️ Not built |
+| 4 | **Per-channel download links.** The APK link can't report where installs came from; give each channel its own short or redirect link so clicks can be counted per channel | ⚠️ Not set up |
+| 5 | **Test-business flag.** The database holds test data (the seeded demo account, test businesses, and the "Yuru Stores" demo business created for the demo video). Add an `isTest` flag on businesses, set it on the existing test accounts, and exclude flagged businesses from every metric, or the numbers will be skewed | ⚠️ Not built |
+| 6 | **Metric definitions, agreed and written down** so the weekly numbers mean the same thing every week: *activated* = first `SALE_CREATED` within 7 days of sign-up; *time to first value* = sign-up to first sale; *active day* = a day with at least one ledger event; *D7 retention* = active on days 7–13 after sign-up; *D30 retention* = active on days 30–36; *WAU / MAU* = businesses with any event in the last 7 / 30 days; *record consistency* = active days per week (3+ is a healthy habit); *referral activation* = referred businesses that activate | ⚠️ Proposed, not adopted |
+| 7 | **Weekly metrics report.** An owner-only script or internal admin page that prints, every Monday, a weekly cohort table (sign-ups, activated, D7- and D30-retained by sign-up week) plus WAU/MAU and activation by acquisition source, excluding test businesses. Computed with SQL over `businesses` and `ledger_events`; no third-party tool needed | ⚠️ Not built |
+| 8 | **Recording vs. viewing.** `ledger_events` only records changes, so an owner who opens the app just to read the dashboard doesn't count as active. That's the right measure for record consistency; if "opened the app" also matters, add a lightweight app-open event later | ➖ Accepted for now |
+| 9 | **Analytics tool, later.** Start with the sheet and SQL (free, and no business data leaves our own systems, which keeps the NDPA position simple). Once there are hundreds of businesses, consider a product-analytics tool such as PostHog for funnels and dashboards: aggregate counts only, disclosed in the privacy notice, session recording off with inputs masked (see the legal-exposure review above) | ➖ Later |
+
+Example cohort query (item 7), for reference:
+
+```sql
+WITH days AS (
+  SELECT "businessId", date_trunc('day', "createdAt") AS day
+  FROM ledger_events GROUP BY 1, 2
+)
+SELECT date_trunc('week', b."createdAt") AS cohort_week,
+  COUNT(*) AS signups,
+  COUNT(*) FILTER (WHERE EXISTS (SELECT 1 FROM ledger_events e WHERE e."businessId" = b.id
+    AND e.type = 'SALE_CREATED' AND e."createdAt" < b."createdAt" + interval '7 days')) AS activated,
+  COUNT(*) FILTER (WHERE EXISTS (SELECT 1 FROM days d WHERE d."businessId" = b.id
+    AND d.day >= b."createdAt" + interval '7 days' AND d.day < b."createdAt" + interval '14 days')) AS d7_retained,
+  COUNT(*) FILTER (WHERE EXISTS (SELECT 1 FROM days d WHERE d."businessId" = b.id
+    AND d.day >= b."createdAt" + interval '30 days' AND d.day < b."createdAt" + interval '37 days')) AS d30_retained
+FROM businesses b
+GROUP BY 1 ORDER BY 1;
+```
+
+Add `AND NOT b."isTest"` once item 5 exists.
+
 ## Explicitly out of scope for "production-ready MVP"
 
 Per the blueprint's own roadmap, these are later-stage and shouldn't block
