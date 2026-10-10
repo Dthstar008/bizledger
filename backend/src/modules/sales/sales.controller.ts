@@ -1,6 +1,7 @@
-import { Body, Controller, Get, Param, Post, UseGuards, UseInterceptors } from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseUUIDPipe, Post, UseGuards, UseInterceptors } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
-import { ActiveBranchId, Actor, CurrentActor, CurrentBusinessId, WriteBranchId } from '../../common/current-business.decorator';
+import { ActiveBranchId, Actor, CurrentActor, CurrentBusinessId, CurrentRole, WriteBranchId } from '../../common/current-business.decorator';
+import { Role } from '../../entities';
 import { RolesGuard } from '../../common/roles.guard';
 import { RedactCostsInterceptor } from '../../common/redact-costs.interceptor';
 import { BranchContextGuard } from '../branches/branch-context.guard';
@@ -29,8 +30,14 @@ export class SalesController {
     return this.salesService.findAll(businessId, branchId);
   }
 
+  /** Staff only see sales from their own branch, as in the list; owners see every branch. */
   @Get(':id')
-  findOne(@CurrentBusinessId() businessId: string, @Param('id') id: string) {
-    return this.salesService.findOne(businessId, id);
+  findOne(
+    @CurrentBusinessId() businessId: string,
+    @CurrentRole() role: Role,
+    @ActiveBranchId() branchId: string | undefined,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.salesService.findOne(businessId, id, role === Role.STAFF ? branchId : undefined);
   }
 }

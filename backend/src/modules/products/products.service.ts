@@ -89,7 +89,10 @@ export class ProductsService {
   }
 
   async findByBarcode(businessId: string, code: string): Promise<Product> {
-    const product = await this.products.findOne({ where: { businessId, barcode: code.trim() } });
+    const barcode = code.trim();
+    // Same limit as when a barcode is saved, so nothing longer can ever match.
+    if (!barcode || barcode.length > 64) throw new BadRequestException('Enter a barcode of 1 to 64 characters');
+    const product = await this.products.findOne({ where: { businessId, barcode } });
     if (!product) throw new NotFoundException(`No product with barcode ${code}`);
     return product;
   }
