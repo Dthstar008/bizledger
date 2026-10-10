@@ -300,8 +300,9 @@ export class SalesService {
     });
   }
 
-  async findOne(businessId: string, id: string): Promise<Sale> {
-    const sale = await this.sales.findOne({ where: { id, businessId }, relations: ['items', 'customer'] });
+  /** With branchId, a sale from another branch is "not found" (not "forbidden"), so its existence isn't revealed. */
+  async findOne(businessId: string, id: string, branchId?: string): Promise<Sale> {
+    const sale = await this.sales.findOne({ where: branchId ? { id, businessId, branchId } : { id, businessId }, relations: ['items', 'customer'] });
     if (!sale) throw new NotFoundException('Sale not found');
     return sale;
   }
