@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1920" viewBox="0 0 1080 1920">
+  <rect width="1080" height="1920" fill="#0B6E4F"/>
+  <circle cx="1000" cy="300" r="360" fill="#084C37" opacity="0.5"/>
+  <circle cx="60" cy="1650" r="330" fill="#084C37" opacity="0.45"/>
+  
+    <text font-family="Arial, 'Segoe UI', Helvetica, sans-serif" font-weight="700" font-size="130" text-anchor="middle"><tspan x="540" y="800" fill="#FFF">Memory is</tspan><tspan x="540" y="950" fill="#F5B800">not a ledger.</tspan></text>
+    <text x="540" y="1130" font-family="Arial, 'Segoe UI', Helvetica, sans-serif" font-size="52" fill="#FFF" opacity="0.95" text-anchor="middle">Write it down. Every time.</text>
+</svg>

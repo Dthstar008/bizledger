@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1920" viewBox="0 0 1080 1920">
+  <rect width="1080" height="1920" fill="#0B6E4F"/>
+  <circle cx="1000" cy="300" r="360" fill="#084C37" opacity="0.5"/>
+  <circle cx="60" cy="1650" r="330" fill="#084C37" opacity="0.45"/>
+  
+    <text font-family="Arial, 'Segoe UI', Helvetica, sans-serif" font-weight="700" font-size="112" text-anchor="middle"><tspan x="540" y="760" fill="#FFF">Track every debt</tspan><tspan x="540" y="892" fill="#F5B800">on your phone.</tspan></text>
+    <text x="540" y="1100" font-family="Arial, 'Segoe UI', Helvetica, sans-serif" font-weight="700" font-size="60" fill="#FFF" text-anchor="middle">BizLedger</text>
+    <rect x="190" y="1180" width="700" height="130" rx="65" fill="#F5B800"/>
+    <text x="540" y="1264" font-family="Arial, 'Segoe UI', Helvetica, sans-serif" font-weight="700" font-size="54" fill="#084C37" text-anchor="middle">Join the waitlist</text>
+    <text x="540" y="1420" font-family="Arial, 'Segoe UI', Helvetica, sans-serif" font-weight="700" font-size="46" fill="#FFF" text-anchor="middle">Link in bio ↑</text>
+</svg>

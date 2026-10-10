@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1920" viewBox="0 0 1080 1920">
+  <rect width="1080" height="1920" fill="#0B6E4F"/>
+  <circle cx="1000" cy="300" r="360" fill="#084C37" opacity="0.5"/>
+  <circle cx="60" cy="1650" r="330" fill="#084C37" opacity="0.45"/>
+  
+    <text x="540" y="560" font-family="Arial, 'Segoe UI', Helvetica, sans-serif" font-weight="700" font-size="44" fill="#F5B800" text-anchor="middle" letter-spacing="5">EVERY SHOP OWNER KNOWS THIS</text>
+    <text font-family="Arial, 'Segoe UI', Helvetica, sans-serif" font-weight="700" font-size="150" text-anchor="middle"><tspan x="540" y="800" fill="#FFF">“I’ll pay</tspan><tspan x="540" y="970" fill="#F5B800">tomorrow.”</tspan></text>
+    <text x="540" y="1180" font-family="Arial, 'Segoe UI', Helvetica, sans-serif" font-size="56" fill="#FFF" opacity="0.95" text-anchor="middle">...but how much was it? 😩</text>
+    <text x="540" y="1640" font-family="Arial, 'Segoe UI', Helvetica, sans-serif" font-weight="700" font-size="44" fill="#FFF" opacity="0.9" text-anchor="middle">@bizledger.ng</text>
+</svg>

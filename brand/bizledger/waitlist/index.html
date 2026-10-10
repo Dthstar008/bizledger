@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BizLedger | Join the waitlist</title>
+<meta name="description" content="BizLedger tracks your sales, stock, expenses and customer debts in one app. Built for Nigerian small businesses. Join the early access waitlist.">
+<meta property="og:title" content="BizLedger | Your shop's digital back office">
+<meta property="og:description" content="Sales, stock, expenses and debts in one app. Join the early access waitlist.">
+<link rel="icon" type="image/png" href="favicon.png">
+<style>
+  :root { --green:#0B6E4F; --green-dark:#084C37; --gold:#F5B800; --cream:#F4F1E8; --ink:#1B2B25; --muted:#5E6F68; --red:#C0392B; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:Arial,'Segoe UI',Helvetica,sans-serif; background:var(--green); color:var(--ink); min-height:100vh; }
+  .wrap { max-width:520px; margin:0 auto; padding:28px 20px 48px; }
+  .brand { display:flex; align-items:center; gap:12px; color:#fff; font-weight:700; font-size:22px; }
+  .brand img { width:44px; height:44px; border-radius:10px; }
+  h1 { color:#fff; font-size:34px; line-height:1.15; margin:28px 0 12px; }
+  h1 span { color:var(--gold); }
+  .lead { color:#E6F2EC; font-size:17px; line-height:1.5; margin:0 0 20px; }
+  ul.points { list-style:none; padding:0; margin:0 0 24px; display:grid; gap:8px; color:#fff; font-size:16px; }
+  ul.points li::before { content:"\2713"; color:var(--gold); font-weight:700; margin-right:10px; }
+  form, .done { background:#fff; border-radius:20px; padding:24px 20px; box-shadow:0 10px 30px rgba(0,0,0,.18); }
+  label { display:block; font-weight:700; font-size:15px; margin:16px 0 6px; }
+  label:first-of-type { margin-top:0; }
+  .opt { font-weight:400; color:var(--muted); }
+  input, select, textarea { width:100%; font:inherit; font-size:16px; padding:13px 14px; border:2px solid #D6DDD9; border-radius:12px; background:#fff; color:var(--ink); }
+  input:focus, select:focus, textarea:focus { outline:none; border-color:var(--green); }
+  textarea { min-height:84px; resize:vertical; }
+  button { width:100%; margin-top:22px; padding:16px; font:inherit; font-size:18px; font-weight:700; color:var(--green-dark); background:var(--gold); border:0; border-radius:999px; cursor:pointer; }
+  button:disabled { opacity:.6; cursor:wait; }
+  .err { color:var(--red); font-size:14px; margin:12px 0 0; min-height:18px; }
+  .choice { display:grid; gap:10px; }
+  .pill { display:flex; align-items:center; gap:10px; margin:0; padding:13px 14px; font-weight:400; font-size:16px; border:2px solid #D6DDD9; border-radius:12px; cursor:pointer; }
+  .pill input { width:20px; height:20px; margin:0; accent-color:var(--green); }
+  .pill:has(input:checked) { border-color:var(--green); background:#EAF5F0; }
+  .hp { position:absolute; left:-9999px; }
+  .fine { font-size:13px; color:var(--muted); margin:14px 0 0; text-align:center; }
+  .done { text-align:center; display:none; }
+  .done h2 { margin:0 0 8px; color:var(--green); }
+  .done p { margin:0 0 16px; line-height:1.5; }
+  .wa { display:inline-block; padding:13px 22px; border-radius:999px; background:var(--green); color:#fff; font-weight:700; text-decoration:none; }
+  footer { color:#BFDCCF; font-size:13px; text-align:center; margin-top:28px; }
+</style>
+</head>
+<body>
+<main class="wrap">
+  <div class="brand"><img src="logo.svg" alt="BizLedger logo"> BizLedger</div>
+  <h1>Know your <span>real profit.</span> Know who owes you.</h1>
+  <p class="lead">BizLedger is a simple app for Nigerian shop owners and small businesses. Join the waitlist to get early access.</p>
+  <ul class="points">
+    <li>Track sales and stock in one place</li>
+    <li>Record expenses and see your profit</li>
+    <li>Never forget who owes you money</li>
+  </ul>
+
+  <form id="form" novalidate>
+    <label for="name">Your name</label>
+    <input id="name" name="name" autocomplete="name" required>
+
+    <label for="phone">WhatsApp number</label>
+    <input id="phone" name="phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="e.g. 0803 000 0000" required>
+
+    <label for="email">Email <span class="opt">(optional)</span></label>
+    <input id="email" name="email" type="email" autocomplete="email">
+
+    <label for="business">What kind of business do you run?</label>
+    <select id="business" name="business_type" required>
+      <option value="">Choose one</option>
+      <option>Provision / grocery store</option>
+      <option>Phones and accessories</option>
+      <option>Fashion / clothing</option>
+      <option>Food and restaurant</option>
+      <option>Market trader</option>
+      <option>Pharmacy / chemist</option>
+      <option>Services (salon, repairs, etc.)</option>
+      <option>Other</option>
+    </select>
+
+    <label for="bname">Business name</label>
+    <input id="bname" name="business_name" autocomplete="organization" placeholder="e.g. Mama Ade Stores" required>
+
+    <label for="bloc">Business location <span class="opt">(town / city and state)</span></label>
+    <input id="bloc" name="business_location" autocomplete="address-level2" placeholder="e.g. Owo, Ondo State" required>
+
+    <label id="physlabel">Do you have a physical shop or location?</label>
+    <div class="choice" role="radiogroup" aria-labelledby="physlabel">
+      <label class="pill"><input type="radio" name="has_physical" value="yes"> Yes</label>
+      <label class="pill"><input type="radio" name="has_physical" value="no"> No, I sell online or on the move</label>
+    </div>
+
+    <div id="addrbox" style="display:none">
+      <label for="addr">Shop address</label>
+      <input id="addr" name="address" autocomplete="street-address" placeholder="Street, area, nearest landmark">
+    </div>
+
+    <label for="pain">Hardest part of tracking your money? <span class="opt">(optional)</span></label>
+    <textarea id="pain" name="pain_point" placeholder="e.g. I forget who owes me"></textarea>
+
+    <input class="hp" name="website" tabindex="-1" autocomplete="off" aria-hidden="true">
+
+    <button id="btn" type="submit">Join the waitlist</button>
+    <p class="err" id="err" role="alert"></p>
+    <p class="fine">No spam. We'll only contact you about BizLedger.</p>
+  </form>
+
+  <div class="done" id="done">
+    <h2>You're on the list! 🎉</h2>
+    <p>Thanks, <b id="who"></b>. We'll message you on WhatsApp when early access opens.</p>
+    <a class="wa" id="wa" href="#" target="_blank" rel="noopener" style="display:none">Chat with us on WhatsApp</a>
+  </div>
+
+  <footer>&copy; BizLedger &middot; Built in Nigeria</footer>
+</main>
+
+<script>
+/* ---------- CONFIG: fill these in (see SETUP.md) ---------- */
+const CONFIG = {
+  // Supabase project URL, e.g. "https://abcd1234.supabase.co"
+  supabaseUrl: "https://asgmtbsuielygxsxgwmm.supabase.co",
+  // Supabase *anon / publishable* key only. Never put the service_role key here.
+  supabaseAnonKey: "sb_publishable_R6PK4Pf0aoK3ZLXPdXezWQ_IVm-ff6v",
+  // Your WhatsApp number in international format, digits only, e.g. "2348030000000"
+  whatsappNumber: "2349032482151"
+};
+/* ---------------------------------------------------------- */
+
+const $ = (id) => document.getElementById(id);
+const form = $('form'), btn = $('btn'), err = $('err');
+
+function normalizePhone(raw) {
+  let d = raw.replace(/[^\d+]/g, '');
+  if (d.startsWith('+')) d = d.slice(1);
+  if (d.startsWith('0')) d = '234' + d.slice(1);
+  return d;
+}
+
+form.addEventListener('change', (e) => {
+  if (e.target.name !== 'has_physical') return;
+  $('addrbox').style.display = e.target.value === 'yes' ? 'block' : 'none';
+  if (e.target.value !== 'yes') $('addr').value = '';
+});
+
+function waLink(text) {
+  return 'https://wa.me/' + CONFIG.whatsappNumber + '?text=' + encodeURIComponent(text);
+}
+
+form.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  err.textContent = '';
+  const v = Object.fromEntries(new FormData(form).entries());
+  if (v.website) return; // honeypot: bots fill this in
+  const name = (v.name || '').trim();
+  const phone = normalizePhone(v.phone || '');
+  if (!name) return (err.textContent = 'Please enter your name.');
+  if (!/^\d{10,15}$/.test(phone)) return (err.textContent = 'Please enter a valid phone number.');
+  if (v.email && !/^\S+@\S+\.\S+$/.test(v.email)) return (err.textContent = 'That email looks wrong.');
+  if (!v.business_type) return (err.textContent = 'Please choose your business type.');
+  const businessName = (v.business_name || '').trim();
+  const businessLocation = (v.business_location || '').trim();
+  const address = (v.address || '').trim();
+  if (!businessName) return (err.textContent = 'Please enter your business name.');
+  if (!businessLocation) return (err.textContent = 'Please enter your business location.');
+  if (!v.has_physical) return (err.textContent = 'Please say whether you have a physical shop or location.');
+  const hasPhysical = v.has_physical === 'yes';
+  if (hasPhysical && !address) return (err.textContent = 'Please enter your shop address.');
+
+  const lead = {
+    name, phone,
+    email: (v.email || '').trim() || null,
+    business_type: v.business_type,
+    business_name: businessName,
+    business_location: businessLocation,
+    has_physical_location: hasPhysical,
+    address: hasPhysical ? address : null,
+    pain_point: (v.pain_point || '').trim() || null
+  };
+  const text = `Hi BizLedger, I'd like early access.\nName: ${name}\nBusiness: ${businessName} (${lead.business_type})\nLocation: ${businessLocation}`;
+  const hasDb = CONFIG.supabaseUrl && CONFIG.supabaseAnonKey;
+  const hasWa = !!CONFIG.whatsappNumber;
+
+  if (!hasDb && !hasWa) {
+    err.textContent = 'This waitlist is not connected yet. Please check back soon.';
+    return;
+  }
+
+  btn.disabled = true; btn.textContent = 'Joining...';
+  try {
+    if (hasDb) {
+      const base = new URL(CONFIG.supabaseUrl).origin; // tolerate a pasted ".../rest/v1/" suffix
+      const res = await fetch(base + '/rest/v1/waitlist', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          apikey: CONFIG.supabaseAnonKey,
+          Authorization: 'Bearer ' + CONFIG.supabaseAnonKey,
+          Prefer: 'return=minimal'
+        },
+        body: JSON.stringify(lead)
+      });
+      if (res.status === 409) { /* already signed up: treat as success */ }
+      else if (!res.ok) throw new Error('save failed ' + res.status);
+    }
+    $('who').textContent = name.split(' ')[0];
+    if (hasWa) { const a = $('wa'); a.href = waLink(text); a.style.display = 'inline-block'; }
+    form.style.display = 'none';
+    $('done').style.display = 'block';
+    if (!hasDb && hasWa) window.open(waLink(text), '_blank', 'noopener');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  } catch (ex) {
+    console.error(ex);
+    err.textContent = 'Something went wrong. Please try again.';
+    btn.disabled = false; btn.textContent = 'Join the waitlist';
+  }
+});
+</script>
+</body>
+</html>

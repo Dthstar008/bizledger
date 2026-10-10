@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1920" viewBox="0 0 1080 1920">
+  <rect width="1080" height="1920" fill="#084C37"/>
+  <circle cx="1000" cy="300" r="360" fill="#084C37" opacity="0.5"/>
+  <circle cx="60" cy="1650" r="330" fill="#084C37" opacity="0.45"/>
+  
+    <text font-family="Arial, 'Segoe UI', Helvetica, sans-serif" font-weight="700" font-size="128" text-anchor="middle"><tspan x="540" y="900" fill="#FFF">3 days later...</tspan></text>
+</svg>
