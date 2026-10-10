@@ -1,12 +1,23 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, Repository } from 'typeorm';
-import { Customer, Sale, Transaction, TransactionPurpose, TransactionChannel, LedgerEventType, PaymentStatus } from '../../entities';
+import { DataSource, EntityManager, Repository } from 'typeorm';
+import {
+  Customer,
+  Sale,
+  SaleStatus,
+  Transaction,
+  TransactionPurpose,
+  TransactionChannel,
+  LedgerEventType,
+  PaymentStatus,
+} from '../../entities';
 import { CreateCustomerDto } from './dto/create-customer.dto';
+import { UpdateCustomerDto } from './dto/update-customer.dto';
 import { CreateRepaymentDto } from './dto/create-repayment.dto';
 import { LedgerService } from '../ledger/ledger.service';
 import { SalesService } from '../sales/sales.service';
 import { withConnectionRetry } from '../../common/retry';
+import { Actor, actorMeta } from '../../common/current-business.decorator';
 
 @Injectable()
 export class CustomersService {
@@ -19,8 +30,80 @@ export class CustomersService {
     private readonly salesService: SalesService,
   ) {}
 
-  create(businessId: string, dto: CreateCustomerDto): Promise<Customer> {
-    return withConnectionRetry(() => this.customers.save(this.customers.create({ ...dto, businessId })));
+  create(businessId: string, dto: CreateCustomerDto, actor?: Actor): Promise<Customer> {
+    return withConnectionRetry(() =>
+      this.dataSource.transaction(async (manager) => {
+        const customer = await manager.getRepository(Customer).save(this.customers.create({ ...dto, businessId }));
+        await this.ledgerService.record(
+          businessId,
+          LedgerEventType.CUSTOMER_CREATED,
+          undefined,
+          { customerId: customer.id, name: customer.name, ...actorMeta(actor) },
+          manager,
+        );
+        return customer;
+      }),
+    );
+  }
+
+  private async lockCustomer(manager: EntityManager, businessId: string, id: string): Promise<Customer> {
+    const customer = await manager
+      .getRepository(Customer)
+      .findOne({ where: { id, businessId }, lock: { mode: 'pessimistic_write' } });
+    if (!customer) throw new NotFoundException('Customer not found');
+    return customer;
+  }
+
+  async update(businessId: string, id: string, dto: UpdateCustomerDto, actor?: Actor): Promise<Customer> {
+    return this.dataSource.transaction(async (manager) => {
+      const customer = await this.lockCustomer(manager, businessId, id);
+      const changes: Record<string, { from: unknown; to: unknown }> = {};
+      for (const key of ['name', 'phone'] as const) {
+        if (dto[key] !== undefined && dto[key] !== customer[key]) {
+          changes[key] = { from: customer[key] ?? null, to: dto[key] };
+        }
+      }
+      if (Object.keys(changes).length === 0) return customer;
+      Object.assign(customer, dto);
+      const saved = await manager.getRepository(Customer).save(customer);
+      await this.ledgerService.record(
+        businessId,
+        LedgerEventType.CUSTOMER_UPDATED,
+        undefined,
+        { customerId: id, name: saved.name, changes, ...actorMeta(actor) },
+        manager,
+      );
+      return saved;
+    });
+  }
+
+  /**
+   * Only customers with no sales and no payments can be removed. Deleting one
+   * with history would unlink those sales (FK is SET NULL) and silently drop
+   * any debt they still owe from every total. The row lock also blocks a sale
+   * for this customer from being recorded while the check runs.
+   */
+  async remove(businessId: string, id: string, actor?: Actor): Promise<void> {
+    await this.dataSource.transaction(async (manager) => {
+      const customer = await this.lockCustomer(manager, businessId, id);
+      const [saleCount, txCount] = await Promise.all([
+        manager.getRepository(Sale).count({ where: { businessId, customerId: id } }),
+        manager.getRepository(Transaction).count({ where: { businessId, customerId: id } }),
+      ]);
+      if (saleCount > 0 || txCount > 0) {
+        throw new ConflictException(
+          `${customer.name} has sales or payments on record, so they can't be deleted. You can still edit their details.`,
+        );
+      }
+      await manager.getRepository(Customer).delete({ id, businessId });
+      await this.ledgerService.record(
+        businessId,
+        LedgerEventType.CUSTOMER_DELETED,
+        undefined,
+        { customerId: id, name: customer.name, ...actorMeta(actor) },
+        manager,
+      );
+    });
   }
 
   async findAll(businessId: string) {
@@ -45,10 +128,16 @@ export class CustomersService {
     ]);
 
     const outstandingBalance = creditSales.reduce((sum, s) => sum + s.outstandingBalance, 0);
+    const confirmed = creditSales.filter((s) => s.status === SaleStatus.CONFIRMED);
 
     return {
       ...customer,
       outstandingBalance,
+      purchaseSummary: {
+        saleCount: confirmed.length,
+        totalSpent: confirmed.reduce((sum, s) => sum + s.totalAmount, 0),
+        lastPurchaseAt: confirmed[0]?.createdAt ?? null,
+      },
       creditSales: creditSales.filter((s) => s.creditAmount > 0),
       repayments,
     };
@@ -62,14 +151,15 @@ export class CustomersService {
    * exactly which sale each naira went against and which channel it
    * arrived through.
    */
-  async addRepayment(businessId: string, customerId: string, dto: CreateRepaymentDto): Promise<Transaction[]> {
-    return withConnectionRetry(() => this.addRepaymentInner(businessId, customerId, dto));
+  async addRepayment(businessId: string, customerId: string, dto: CreateRepaymentDto, actor?: Actor): Promise<Transaction[]> {
+    return withConnectionRetry(() => this.addRepaymentInner(businessId, customerId, dto, actor));
   }
 
   private async addRepaymentInner(
     businessId: string,
     customerId: string,
     dto: CreateRepaymentDto,
+    actor?: Actor,
   ): Promise<Transaction[]> {
     return this.dataSource.transaction(async (manager) => {
       const customer = await manager.findOne(Customer, { where: { id: customerId, businessId } });
@@ -138,13 +228,24 @@ export class CustomersService {
           businessId,
           type: LedgerEventType.CUSTOMER_CREDIT_REPAID,
           amount: a.applied,
-          metadata: { customerId, saleId: a.saleId, transactionId: created[idx].id, paymentStatus: a.paymentStatus },
+          metadata: {
+            customerId,
+            saleId: a.saleId,
+            transactionId: created[idx].id,
+            paymentStatus: a.paymentStatus,
+            channel: dto.channel,
+            ...actorMeta(actor),
+          },
         })),
         manager,
       );
 
       return created;
     });
+  }
+
+  count(businessId: string): Promise<number> {
+    return this.customers.count({ where: { businessId } });
   }
 
   async totalOutstandingDebt(businessId: string): Promise<number> {

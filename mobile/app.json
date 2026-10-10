@@ -1,9 +1,9 @@
 {
   "expo": {
-    "name": "Financial OS",
-    "slug": "financial-os-ng",
-    "scheme": "financialos",
-    "version": "1.0.0",
+    "name": "BizLedger",
+    "slug": "bizledger",
+    "scheme": "bizledger",
+    "version": "1.1.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -12,19 +12,40 @@
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
+        "backgroundColor": "#E6F4ED",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "package": "com.serraphsorganization.bizledger"
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
       "expo-router",
-      "expo-status-bar"
-    ]
+      "expo-status-bar",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "BizLedger uses the camera to scan product barcodes and take product photos."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "BizLedger uses your photos so you can add a picture to a product.",
+          "cameraPermission": "BizLedger uses the camera to scan product barcodes and take product photos."
+        }
+      ]
+    ],
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "b043e1b7-56a4-4710-8714-c19bbffe750d"
+      }
+    },
+    "owner": "serraphs-organization"
   }
 }

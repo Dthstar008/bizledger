@@ -29,6 +29,7 @@ export enum PaymentStatus {
 
 @Entity('sales')
 @Index(['businessId', 'createdAt'])
+@Index('UQ_sales_business_clientRef', ['businessId', 'clientRef'], { unique: true, where: '"clientRef" IS NOT NULL' })
 export class Sale {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -39,6 +40,9 @@ export class Sale {
 
   @Column()
   businessId: string;
+
+  @Column({ type: 'uuid', nullable: true })
+  branchId?: string | null;
 
   @ManyToOne(() => Customer, { nullable: true, onDelete: 'SET NULL' })
   @JoinColumn({ name: 'customerId' })
@@ -95,6 +99,10 @@ export class Sale {
 
   @Column({ type: 'timestamptz', nullable: true })
   confirmedAt?: Date;
+
+  /** UUID made on the phone when the record was created; makes offline sync safe to retry (unique per business). */
+  @Column({ type: 'uuid', nullable: true })
+  clientRef?: string | null;
 
   @CreateDateColumn()
   createdAt: Date;

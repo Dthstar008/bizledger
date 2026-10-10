@@ -1,4 +1,4 @@
-import { IsInt, IsNotEmpty, IsNumber, IsOptional, Min } from 'class-validator';
+import { IsInt, IsNotEmpty, IsNumber, IsOptional, IsString, MaxLength, Min } from 'class-validator';
 
 export class CreateProductDto {
   @IsNotEmpty()
@@ -6,6 +6,12 @@ export class CreateProductDto {
 
   @IsOptional()
   sku?: string;
+
+  /** Scanned EAN/UPC/QR value. Unique per business; empty string clears it. */
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  barcode?: string;
 
   @IsNumber()
   @Min(0)

@@ -1,163 +1,143 @@
-import { useCallback, useState } from 'react';
-import { Alert, StyleSheet, Text, View } from 'react-native';
-import { ScreenContainer } from '../../src/components/ScreenContainer';
+import { useEffect, useMemo, useState } from 'react';
+import { StyleSheet } from 'react-native';
+import { router } from 'expo-router';
+import { Screen } from '../../src/components/Screen';
+import { PageHeader } from '../../src/components/PageHeader';
 import { Button } from '../../src/components/Button';
-import { TextField } from '../../src/components/TextField';
-import { createProduct, listProducts } from '../../src/api/products';
-import { apiErrorMessage } from '../../src/api/client';
-import { Product } from '../../src/api/types';
+import { Card } from '../../src/components/Card';
+import { ChipGroup } from '../../src/components/Chip';
+import { SearchBar } from '../../src/components/SearchBar';
+import { ListRow } from '../../src/components/ListRow';
+import { isLowStock as isLow, isOutOfStock as isOut, StockBadge } from '../../src/components/StockBadge';
+import { AppText } from '../../src/components/AppText';
+import { ProductImage } from '../../src/components/ProductImage';
+import { EmptyState, ErrorState, InlineError, SkeletonList } from '../../src/components/Feedback';
+import { listProducts } from '../../src/api/products';
+import { useResource } from '../../src/hooks/useResource';
+import { pendingStock, useMyOutbox } from '../../src/offline/outbox';
+import { prefetchProductImages } from '../../src/offline/image-cache';
+import { selectIsOwner, useAuthStore } from '../../src/store/auth-store';
 import { formatNaira } from '../../src/utils/currency';
-import { colors, radius, spacing } from '../../src/theme';
-import { useFocusLoad } from '../../src/hooks/useFocusLoad';
+import { spacing } from '../../src/theme';
+
+type Filter = 'all' | 'low' | 'out';
 
 export default function InventoryScreen() {
-  const [products, setProducts] = useState<Product[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [showForm, setShowForm] = useState(false);
+  const isOwner = useAuthStore(selectIsOwner);
+  const [query, setQuery] = useState('');
+  const [filter, setFilter] = useState<Filter>('all');
+  const products = useResource(listProducts, ['product.changed', 'stock.adjusted', 'sale.completed'], [], { key: 'products' });
+  const { error, loading, refreshing, reload, retry } = products;
+  const outbox = useMyOutbox();
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      setProducts(await listProducts());
-    } catch (err) {
-      Alert.alert('Could not load inventory', apiErrorMessage(err));
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  // Stock on this phone already reflects sales made offline that haven't synced yet.
+  const data = useMemo(() => {
+    const pending = pendingStock(outbox);
+    if (!products.data || pending.size === 0) return products.data;
+    return products.data.map((p) => (pending.has(p.id) ? { ...p, stockQty: p.stockQty - pending.get(p.id)! } : p));
+  }, [products.data, outbox]);
 
-  useFocusLoad(load);
+  // Keep every photo on the phone, so the list shows them at once and offline.
+  useEffect(() => {
+    if (products.data && products.savedAt === null) prefetchProductImages(products.data);
+  }, [products.data, products.savedAt]);
 
-  return (
-    <ScreenContainer refreshing={loading} onRefresh={load}>
-      <View style={styles.headerRow}>
-        <Text style={styles.title}>Inventory</Text>
-        <Button label={showForm ? 'Cancel' : 'Add product'} variant="secondary" onPress={() => setShowForm((v) => !v)} />
-      </View>
-
-      {showForm && (
-        <NewProductForm
-          onCreated={() => {
-            setShowForm(false);
-            load();
-          }}
-        />
-      )}
-
-      {products.length === 0 && !loading ? (
-        <Text style={styles.empty}>No products yet. Add your first one above.</Text>
-      ) : (
-        products.map((p) => (
-          <View key={p.id} style={styles.card}>
-            <View style={styles.cardHeader}>
-              <Text style={styles.productName}>{p.name}</Text>
-              <Text style={p.stockQty <= p.lowStockThreshold ? styles.stockLow : styles.stock}>
-                {p.stockQty} in stock
-              </Text>
-            </View>
-            <View style={styles.priceRow}>
-              <Text style={styles.priceLabel}>Cost {formatNaira(p.costPrice)}</Text>
-              <Text style={styles.priceLabel}>Sells {formatNaira(p.sellingPrice)}</Text>
-              <Text style={styles.priceLabel}>Value {formatNaira(p.costPrice * p.stockQty)}</Text>
-            </View>
-          </View>
-        ))
-      )}
-    </ScreenContainer>
+  const counts = useMemo(
+    () => ({ low: (data ?? []).filter(isLow).length, out: (data ?? []).filter(isOut).length }),
+    [data],
   );
-}
+  const stockValue = useMemo(() => (data ?? []).reduce((sum, p) => sum + (p.costPrice ?? 0) * Math.max(0, p.stockQty), 0), [data]);
 
-function NewProductForm({ onCreated }: { onCreated: () => void }) {
-  const [name, setName] = useState('');
-  const [costPrice, setCostPrice] = useState('');
-  const [sellingPrice, setSellingPrice] = useState('');
-  const [stockQty, setStockQty] = useState('');
-  const [submitting, setSubmitting] = useState(false);
+  const visible = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return (data ?? []).filter((p) => {
+      if (filter === 'low' && !isLow(p)) return false;
+      if (filter === 'out' && !isOut(p)) return false;
+      return !q || p.name.toLowerCase().includes(q) || (p.sku ?? '').toLowerCase().includes(q) || (p.barcode ?? '').includes(q);
+    });
+  }, [data, query, filter]);
 
-  const canSubmit = name.trim() && costPrice && sellingPrice && stockQty;
+  const header = (
+    <PageHeader
+      title="Inventory"
+      subtitle={
+        data && data.length > 0
+          ? `${data.length} product${data.length === 1 ? '' : 's'}${isOwner ? ` · worth ${formatNaira(stockValue)} at cost` : ''}`
+          : 'Your products and stock levels'
+      }
+      actions={isOwner ? <Button label="Add" icon="add" size="sm" onPress={() => router.push('/product/form')} accessibilityLabel="Add product" /> : null}
+    />
+  );
 
-  async function handleSubmit() {
-    setSubmitting(true);
-    try {
-      await createProduct({
-        name: name.trim(),
-        costPrice: parseFloat(costPrice),
-        sellingPrice: parseFloat(sellingPrice),
-        stockQty: parseInt(stockQty, 10),
-      });
-      onCreated();
-    } catch (err) {
-      Alert.alert('Could not add product', apiErrorMessage(err));
-    } finally {
-      setSubmitting(false);
-    }
+  if (loading) {
+    return (
+      <Screen>
+        {header}
+        <SkeletonList rows={6} />
+      </Screen>
+    );
+  }
+  if (!data) {
+    return (
+      <Screen>
+        {header}
+        <ErrorState message={error ?? 'Your inventory could not be loaded.'} onRetry={retry} />
+      </Screen>
+    );
   }
 
   return (
-    <View style={styles.form}>
-      <TextField label="Product name" value={name} onChangeText={setName} placeholder="Oraimo Charger" />
-      <TextField label="Cost price (₦)" value={costPrice} onChangeText={setCostPrice} keyboardType="numeric" placeholder="6000" />
-      <TextField label="Selling price (₦)" value={sellingPrice} onChangeText={setSellingPrice} keyboardType="numeric" placeholder="9000" />
-      <TextField label="Starting stock" value={stockQty} onChangeText={setStockQty} keyboardType="numeric" placeholder="20" />
-      <Button label="Save product" onPress={handleSubmit} loading={submitting} disabled={!canSubmit} />
-    </View>
+    <Screen refreshing={refreshing} onRefresh={reload}>
+      {header}
+      {error ? <InlineError message={error} onRetry={reload} /> : null}
+      {data.length === 0 ? (
+        <EmptyState
+          icon="cube-outline"
+          title="No products yet"
+          message={isOwner ? 'Add your first product to start managing your inventory.' : 'The business owner has not added any products yet.'}
+          actionLabel={isOwner ? 'Add product' : undefined}
+          onAction={isOwner ? () => router.push('/product/form') : undefined}
+        />
+      ) : (
+        <>
+          <SearchBar value={query} onChangeText={setQuery} placeholder="Search by name, SKU or barcode" />
+          <ChipGroup
+            scrollable
+            value={filter}
+            onChange={setFilter}
+            options={[
+              { value: 'all', label: `All (${data.length})` },
+              { value: 'low', label: `Low stock (${counts.low})` },
+              { value: 'out', label: `Out of stock (${counts.out})` },
+            ]}
+          />
+          {visible.length === 0 ? (
+            <AppText tone="muted" align="center" style={styles.noMatch}>
+              {query ? `No products match “${query}”.` : 'Nothing here right now.'}
+            </AppText>
+          ) : (
+            <Card style={styles.list}>
+              {visible.map((p, i) => (
+                <ListRow
+                  key={p.id}
+                  title={p.name}
+                  subtitle={[`Sells ${formatNaira(p.sellingPrice)}`, p.sku ? `SKU ${p.sku}` : null].filter(Boolean).join(' · ')}
+                  leading={<ProductImage product={p} size={56} />}
+                  trailing={<StockBadge product={p} />}
+                  onPress={() => router.push({ pathname: '/product/[id]', params: { id: p.id } })}
+                  last={i === visible.length - 1}
+                />
+              ))}
+            </Card>
+          )}
+        </>
+      )}
+    </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  headerRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  title: {
-    fontSize: 22,
-    fontWeight: '700',
-    color: colors.text,
-  },
-  form: {
-    backgroundColor: colors.surface,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: spacing.md,
-    gap: spacing.sm,
-  },
-  empty: {
-    color: colors.textMuted,
-    textAlign: 'center',
-    marginTop: spacing.lg,
-  },
-  card: {
-    backgroundColor: colors.surface,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: spacing.md,
-    gap: spacing.xs,
-  },
-  cardHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  productName: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: colors.text,
-  },
-  stock: {
-    color: colors.textMuted,
-  },
-  stockLow: {
-    color: colors.warning,
-    fontWeight: '600',
-  },
-  priceRow: {
-    flexDirection: 'row',
-    gap: spacing.md,
-  },
-  priceLabel: {
-    fontSize: 13,
-    color: colors.textMuted,
-  },
+  list: { paddingVertical: spacing.xs, gap: 0 },
+  noMatch: { paddingVertical: spacing.lg },
 });
+

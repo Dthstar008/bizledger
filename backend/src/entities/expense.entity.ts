@@ -14,6 +14,7 @@ export enum ExpenseCategory {
 
 @Entity('expenses')
 @Index(['businessId', 'createdAt'])
+@Index('UQ_expenses_business_clientRef', ['businessId', 'clientRef'], { unique: true, where: '"clientRef" IS NOT NULL' })
 export class Expense {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -25,6 +26,9 @@ export class Expense {
   @Column()
   businessId: string;
 
+  @Column({ type: 'uuid', nullable: true })
+  branchId?: string | null;
+
   @Column({ type: 'enum', enum: ExpenseCategory, default: ExpenseCategory.OTHER })
   category: ExpenseCategory;
 
@@ -33,6 +37,10 @@ export class Expense {
 
   @Column({ nullable: true })
   description?: string;
+
+  /** UUID made on the phone when the record was created; makes offline sync safe to retry (unique per business). */
+  @Column({ type: 'uuid', nullable: true })
+  clientRef?: string | null;
 
   @CreateDateColumn()
   createdAt: Date;

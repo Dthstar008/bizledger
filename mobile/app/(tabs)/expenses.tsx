@@ -1,193 +1,183 @@
-import { useCallback, useState } from 'react';
-import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
-import { ScreenContainer } from '../../src/components/ScreenContainer';
+import { useMemo, useState } from 'react';
+import { StyleSheet, View } from 'react-native';
+import { router } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
+import { Screen } from '../../src/components/Screen';
+import { PageHeader } from '../../src/components/PageHeader';
 import { Button } from '../../src/components/Button';
-import { TextField } from '../../src/components/TextField';
-import { createExpense, listExpenses } from '../../src/api/expenses';
-import { apiErrorMessage } from '../../src/api/client';
+import { Card, Section } from '../../src/components/Card';
+import { ChipGroup } from '../../src/components/Chip';
+import { SearchBar } from '../../src/components/SearchBar';
+import { ListRow } from '../../src/components/ListRow';
+import { AppText } from '../../src/components/AppText';
+import { StatCard, StatGrid } from '../../src/components/StatCard';
+import { BarList } from '../../src/components/Charts';
+import { EmptyState, ErrorState, InlineError, SkeletonList, SkeletonStats } from '../../src/components/Feedback';
+import { listExpenses } from '../../src/api/expenses';
 import { Expense, ExpenseCategory } from '../../src/api/types';
+import { useResource } from '../../src/hooks/useResource';
+import { PendingRecords } from '../../src/components/PendingRecords';
 import { formatNaira } from '../../src/utils/currency';
+import { EXPENSE_CATEGORIES, expenseCategory } from '../../src/utils/expenses';
+import { dayHeading, dayKey } from '../../src/utils/format';
 import { colors, radius, spacing } from '../../src/theme';
-import { useFocusLoad } from '../../src/hooks/useFocusLoad';
 
-const CATEGORIES: ExpenseCategory[] = ['rent', 'transport', 'salary', 'utilities', 'supplies', 'maintenance', 'other'];
+type Filter = 'all' | ExpenseCategory;
+
+const sum = (list: Expense[]) => list.reduce((total, e) => total + e.amount, 0);
 
 export default function ExpensesScreen() {
-  const [expenses, setExpenses] = useState<Expense[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [showForm, setShowForm] = useState(false);
+  const [query, setQuery] = useState('');
+  const [filter, setFilter] = useState<Filter>('all');
+  const { data, error, loading, refreshing, reload, retry } = useResource(listExpenses, ['expense.changed', 'branch.selected'], [], {
+    key: 'expenses',
+    trim: (list) => list.slice(0, 300),
+  });
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      setExpenses(await listExpenses());
-    } catch (err) {
-      Alert.alert('Could not load expenses', apiErrorMessage(err));
-    } finally {
-      setLoading(false);
+  const stats = useMemo(() => {
+    const all = data ?? [];
+    const now = new Date();
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+    const thisMonth = all.filter((e) => new Date(e.createdAt).getTime() >= monthStart);
+    const byCategory = EXPENSE_CATEGORIES.map((c) => ({ label: c.label, value: sum(thisMonth.filter((e) => e.category === c.value)) }))
+      .filter((c) => c.value > 0)
+      .sort((a, b) => b.value - a.value);
+    return { month: sum(thisMonth), monthCount: thisMonth.length, allTime: sum(all), byCategory };
+  }, [data]);
+
+  const usedCategories = useMemo(() => EXPENSE_CATEGORIES.filter((c) => (data ?? []).some((e) => e.category === c.value)), [data]);
+
+  const groups = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    const matches = (data ?? []).filter((e) => {
+      if (filter !== 'all' && e.category !== filter) return false;
+      return !q || (e.description ?? '').toLowerCase().includes(q) || expenseCategory(e.category).label.toLowerCase().includes(q);
+    });
+    const out: { key: string; heading: string; total: number; items: Expense[] }[] = [];
+    for (const e of matches) {
+      const key = dayKey(e.createdAt);
+      let group = out[out.length - 1];
+      if (!group || group.key !== key) {
+        group = { key, heading: dayHeading(e.createdAt), total: 0, items: [] };
+        out.push(group);
+      }
+      group.items.push(e);
+      group.total += e.amount;
     }
-  }, []);
+    return out;
+  }, [data, query, filter]);
 
-  useFocusLoad(load);
-
-  const total = expenses.reduce((sum, e) => sum + e.amount, 0);
-
-  return (
-    <ScreenContainer refreshing={loading} onRefresh={load}>
-      <View style={styles.headerRow}>
-        <Text style={styles.title}>Expenses</Text>
-        <Button label={showForm ? 'Cancel' : 'Add expense'} variant="secondary" onPress={() => setShowForm((v) => !v)} />
-      </View>
-
-      {expenses.length > 0 && <Text style={styles.total}>Total: {formatNaira(total)}</Text>}
-
-      {showForm && (
-        <NewExpenseForm
-          onCreated={() => {
-            setShowForm(false);
-            load();
-          }}
-        />
-      )}
-
-      {expenses.length === 0 && !loading ? (
-        <Text style={styles.empty}>No expenses recorded yet.</Text>
-      ) : (
-        expenses.map((e) => (
-          <View key={e.id} style={styles.card}>
-            <View style={styles.cardHeader}>
-              <Text style={styles.category}>{e.category}</Text>
-              <Text style={styles.amount}>{formatNaira(e.amount)}</Text>
-            </View>
-            {e.description ? <Text style={styles.description}>{e.description}</Text> : null}
-            <Text style={styles.date}>{new Date(e.createdAt).toLocaleDateString()}</Text>
-          </View>
-        ))
-      )}
-    </ScreenContainer>
+  const addExpense = () => router.push('/expense/form');
+  const header = (
+    <PageHeader
+      title="Expenses"
+      subtitle="Money going out of the business"
+      actions={<Button label="Add" icon="add" size="sm" onPress={addExpense} accessibilityLabel="Add expense" />}
+    />
   );
-}
 
-function NewExpenseForm({ onCreated }: { onCreated: () => void }) {
-  const [category, setCategory] = useState<ExpenseCategory>('other');
-  const [amount, setAmount] = useState('');
-  const [description, setDescription] = useState('');
-  const [submitting, setSubmitting] = useState(false);
-
-  async function handleSubmit() {
-    setSubmitting(true);
-    try {
-      await createExpense({ category, amount: parseFloat(amount), description: description.trim() || undefined });
-      onCreated();
-    } catch (err) {
-      Alert.alert('Could not add expense', apiErrorMessage(err));
-    } finally {
-      setSubmitting(false);
-    }
+  if (loading) {
+    return (
+      <Screen>
+        {header}
+        <SkeletonStats count={2} />
+        <SkeletonList rows={5} />
+      </Screen>
+    );
+  }
+  if (!data) {
+    return (
+      <Screen>
+        {header}
+        <ErrorState message={error ?? 'Your expenses could not be loaded.'} onRetry={retry} />
+      </Screen>
+    );
   }
 
   return (
-    <View style={styles.form}>
-      <Text style={styles.formLabel}>Category</Text>
-      <View style={styles.categoryRow}>
-        {CATEGORIES.map((c) => (
-          <Pressable key={c} onPress={() => setCategory(c)} style={[styles.chip, category === c && styles.chipActive]}>
-            <Text style={[styles.chipText, category === c && styles.chipTextActive]}>{c}</Text>
-          </Pressable>
-        ))}
-      </View>
-      <TextField label="Amount (₦)" value={amount} onChangeText={setAmount} keyboardType="numeric" placeholder="3000" />
-      <TextField label="Note (optional)" value={description} onChangeText={setDescription} placeholder="Trip to Computer Village" />
-      <Button label="Save expense" onPress={handleSubmit} loading={submitting} disabled={!amount} />
-    </View>
+    <Screen refreshing={refreshing} onRefresh={reload}>
+      {header}
+      {error ? <InlineError message={error} onRetry={reload} /> : null}
+      <PendingRecords kind="expense" />
+      {data.length === 0 ? (
+        <EmptyState
+          icon="wallet-outline"
+          title="No expenses yet"
+          message="Record rent, transport, salaries and other costs to see your real profit."
+          actionLabel="Add expense"
+          onAction={addExpense}
+        />
+      ) : (
+        <>
+          <StatGrid>
+            <StatCard label="This month" value={formatNaira(stats.month)} icon="calendar-outline" hint={`${stats.monthCount} expense${stats.monthCount === 1 ? '' : 's'}`} />
+            <StatCard label="All time" value={formatNaira(stats.allTime)} icon="wallet-outline" hint={`${data.length} expense${data.length === 1 ? '' : 's'}`} />
+          </StatGrid>
+
+          {stats.byCategory.length > 0 ? (
+            <Section title="This month by category">
+              <BarList items={stats.byCategory} format={formatNaira} />
+            </Section>
+          ) : null}
+
+          <SearchBar value={query} onChangeText={setQuery} placeholder="Search notes or categories" />
+          {usedCategories.length > 1 ? (
+            <ChipGroup
+              scrollable
+              value={filter}
+              onChange={setFilter}
+              options={[{ value: 'all' as Filter, label: 'All' }, ...usedCategories.map((c) => ({ value: c.value as Filter, label: c.label, icon: c.icon }))]}
+            />
+          ) : null}
+
+          {groups.length === 0 ? (
+            <AppText tone="muted" align="center" style={styles.noMatch}>
+              {query ? `No expenses match “${query}”.` : 'No expenses in this category.'}
+            </AppText>
+          ) : (
+            groups.map((g) => (
+              <View key={g.key} style={styles.group}>
+                <View style={styles.groupHead}>
+                  <AppText variant="overline" tone="muted">
+                    {g.heading}
+                  </AppText>
+                  <AppText variant="caption" tone="muted">
+                    {formatNaira(g.total)}
+                  </AppText>
+                </View>
+                <Card style={styles.list}>
+                  {g.items.map((e, i) => {
+                    const cat = expenseCategory(e.category);
+                    return (
+                      <ListRow
+                        key={e.id}
+                        title={e.description || cat.label}
+                        subtitle={`${cat.label} · ${new Date(e.createdAt).toLocaleTimeString('en-NG', { hour: 'numeric', minute: '2-digit' })}`}
+                        leading={
+                          <View style={styles.icon}>
+                            <Ionicons name={cat.icon} size={20} color={colors.primary} />
+                          </View>
+                        }
+                        trailing={<AppText variant="bodyStrong">{formatNaira(e.amount)}</AppText>}
+                        onPress={() => router.push({ pathname: '/expense/form', params: { id: e.id } })}
+                        last={i === g.items.length - 1}
+                      />
+                    );
+                  })}
+                </Card>
+              </View>
+            ))
+          )}
+        </>
+      )}
+    </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  headerRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  title: {
-    fontSize: 22,
-    fontWeight: '700',
-    color: colors.text,
-  },
-  total: {
-    color: colors.textMuted,
-    fontWeight: '600',
-  },
-  form: {
-    backgroundColor: colors.surface,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: spacing.md,
-    gap: spacing.sm,
-  },
-  formLabel: {
-    fontSize: 13,
-    color: colors.textMuted,
-  },
-  categoryRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.xs,
-  },
-  chip: {
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
-    borderRadius: radius.sm,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-  },
-  chipActive: {
-    backgroundColor: colors.primaryMuted,
-    borderColor: colors.primary,
-  },
-  chipText: {
-    fontSize: 13,
-    color: colors.textMuted,
-  },
-  chipTextActive: {
-    color: colors.primary,
-    fontWeight: '600',
-  },
-  empty: {
-    color: colors.textMuted,
-    textAlign: 'center',
-    marginTop: spacing.lg,
-  },
-  card: {
-    backgroundColor: colors.surface,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: spacing.md,
-    gap: spacing.xs,
-  },
-  cardHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  category: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: colors.text,
-    textTransform: 'capitalize',
-  },
-  amount: {
-    fontWeight: '700',
-    color: colors.danger,
-  },
-  description: {
-    color: colors.textMuted,
-    fontSize: 13,
-  },
-  date: {
-    color: colors.textMuted,
-    fontSize: 12,
-  },
+  list: { paddingVertical: spacing.xs, gap: 0 },
+  noMatch: { paddingVertical: spacing.lg },
+  group: { gap: spacing.sm },
+  groupHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: spacing.xs },
+  icon: { width: 40, height: 40, borderRadius: radius.md, backgroundColor: colors.primaryMuted, alignItems: 'center', justifyContent: 'center' },
 });

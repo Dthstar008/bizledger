@@ -1,24 +1,119 @@
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
-import { Stack } from 'expo-router';
+import { router, Stack, useSegments } from 'expo-router';
+import { useEffect } from 'react';
+import * as SplashScreen from 'expo-splash-screen';
+import {
+  useFonts,
+  PlusJakartaSans_400Regular,
+  PlusJakartaSans_500Medium,
+  PlusJakartaSans_600SemiBold,
+  PlusJakartaSans_700Bold,
+  PlusJakartaSans_800ExtraBold,
+} from '@expo-google-fonts/plus-jakarta-sans';
+import { useAuthStore } from '../src/store/auth-store';
+import { ServerWakeBanner } from '../src/components/ServerWakeBanner';
+import { EventToasts } from '../src/components/Toast';
+import { UpdateGate } from '../src/components/UpdateGate';
+import { checkAppVersion, warmUpServer } from '../src/api/client';
+import { useOfflineSync } from '../src/offline/useOfflineSync';
+import { type } from '../src/theme';
+import { ThemeProvider, useTheme } from '../src/theming';
+
+// Keep the splash up until the brand font is ready, so text never jumps fonts.
+SplashScreen.preventAutoHideAsync().catch(() => undefined);
+
+const PUBLIC_ROUTES = ['login', 'register', 'onboarding', 'forgot-password'];
+
+/**
+ * Sends any protected screen back to login when there is no session: on a
+ * deep link without one, or the moment a 401 clears an expired session.
+ */
+function AuthGate() {
+  const token = useAuthStore((s) => s.token);
+  const hydrated = useAuthStore((s) => s.hasHydrated);
+  const segments = useSegments();
+  const first = segments[0];
+  useEffect(() => {
+    if (!hydrated || token) return;
+    if (first && !PUBLIC_ROUTES.includes(first)) router.replace('/login');
+  }, [hydrated, token, first]);
+  return null;
+}
 
 export default function RootLayout() {
+  const [fontsLoaded, fontError] = useFonts({
+    PlusJakartaSans_400Regular,
+    PlusJakartaSans_500Medium,
+    PlusJakartaSans_600SemiBold,
+    PlusJakartaSans_700Bold,
+    PlusJakartaSans_800ExtraBold,
+  });
+  const ready = fontsLoaded || !!fontError;
+  useEffect(() => {
+    if (ready) SplashScreen.hideAsync().catch(() => undefined);
+  }, [ready]);
+
+  // Sends sales and expenses saved offline once the connection is back.
+  useOfflineSync();
+  // Begin waking the hosted server while the user is still on the login screen.
+  useEffect(() => {
+    warmUpServer();
+    // Lets the server retire or nudge old app versions; harmless when nothing is configured.
+    void checkAppVersion();
+  }, []);
+
+  // If the font fails to load the app still starts, in the system font.
+  if (!ready) return null;
+
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
+    <ThemeProvider>
+      <AppShell />
+    </ThemeProvider>
+  );
+}
+
+function AppShell() {
+  const { colors, scheme } = useTheme();
+  // One header style for every pushed screen, so none of them looks like a different app.
+  const pushed = {
+    headerShown: true,
+    headerShadowVisible: false,
+    headerStyle: { backgroundColor: colors.background },
+    headerTintColor: colors.text,
+    headerTitleStyle: { fontFamily: type.heading.fontFamily, fontSize: type.heading.fontSize },
+    headerBackButtonDisplayMode: 'minimal' as const,
+    contentStyle: { backgroundColor: colors.background },
+  };
+
+  return (
+    <GestureHandlerRootView style={{ flex: 1, backgroundColor: colors.background }}>
       <SafeAreaProvider>
-        <StatusBar style="dark" />
-        <Stack screenOptions={{ headerShown: false }}>
+        <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
+        <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.background } }}>
           <Stack.Screen name="index" />
+          <Stack.Screen name="onboarding" />
           <Stack.Screen name="login" />
           <Stack.Screen name="register" />
+          <Stack.Screen name="forgot-password" />
           <Stack.Screen name="(tabs)" />
-          <Stack.Screen name="sale/new" options={{ presentation: 'modal', headerShown: true, title: 'New Sale' }} />
-          <Stack.Screen
-            name="customer/[id]"
-            options={{ headerShown: true, title: 'Customer' }}
-          />
+          <Stack.Screen name="sale/new" options={{ ...pushed, presentation: 'modal', title: 'New sale' }} />
+          <Stack.Screen name="product/[id]" options={{ ...pushed, title: 'Product' }} />
+          <Stack.Screen name="product/form" options={{ ...pushed, presentation: 'modal', title: 'Product' }} />
+          <Stack.Screen name="customer/[id]" options={{ ...pushed, title: 'Customer' }} />
+          <Stack.Screen name="customer/form" options={{ ...pushed, presentation: 'modal', title: 'Customer' }} />
+          <Stack.Screen name="expense/form" options={{ ...pushed, presentation: 'modal', title: 'Expense' }} />
+          <Stack.Screen name="activity" options={{ ...pushed, title: 'Activity' }} />
+          <Stack.Screen name="team" options={{ ...pushed, title: 'Team & branches' }} />
+          <Stack.Screen name="analytics" options={{ ...pushed, title: 'Analytics' }} />
+          <Stack.Screen name="account" options={{ ...pushed, title: 'Account' }} />
+          <Stack.Screen name="sync" options={{ ...pushed, title: 'Offline records' }} />
         </Stack>
+        <AuthGate />
+        <ServerWakeBanner />
+        <EventToasts />
+        <UpdateGate />
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );

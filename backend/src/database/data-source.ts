@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import './pg-types';
 import { DataSource } from 'typeorm';
 import {
   Business,
@@ -10,6 +11,7 @@ import {
   Expense,
   Transaction,
   LedgerEvent,
+  Branch,
 } from '../entities';
 
 export const AppDataSource = new DataSource({
@@ -18,8 +20,8 @@ export const AppDataSource = new DataSource({
   port: parseInt(process.env.DB_PORT || '5432', 10),
   username: process.env.DB_USERNAME || 'postgres',
   password: process.env.DB_PASSWORD || 'postgres',
-  database: process.env.DB_DATABASE || 'financial_os',
-  entities: [Business, User, Product, Customer, Sale, SaleItem, Expense, Transaction, LedgerEvent],
+  database: process.env.DB_DATABASE || 'bizledger',
+  entities: [Business, User, Product, Customer, Sale, SaleItem, Expense, Transaction, LedgerEvent, Branch],
   migrations: ['src/database/migrations/*.ts'],
   synchronize: false,
   logging: process.env.NODE_ENV === 'development',

@@ -1,143 +1,117 @@
-import { useCallback, useState } from 'react';
-import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useMemo, useState } from 'react';
+import { StyleSheet } from 'react-native';
 import { router } from 'expo-router';
-import { ScreenContainer } from '../../src/components/ScreenContainer';
+import { Screen } from '../../src/components/Screen';
+import { PageHeader } from '../../src/components/PageHeader';
 import { Button } from '../../src/components/Button';
-import { TextField } from '../../src/components/TextField';
-import { createCustomer, listCustomers } from '../../src/api/customers';
-import { apiErrorMessage } from '../../src/api/client';
-import { Customer } from '../../src/api/types';
+import { Card } from '../../src/components/Card';
+import { ChipGroup } from '../../src/components/Chip';
+import { SearchBar } from '../../src/components/SearchBar';
+import { ListRow } from '../../src/components/ListRow';
+import { Badge } from '../../src/components/Badge';
+import { AppText } from '../../src/components/AppText';
+import { Avatar, EmptyState, ErrorState, InlineError, SkeletonList } from '../../src/components/Feedback';
+import { listCustomers } from '../../src/api/customers';
+import { useResource } from '../../src/hooks/useResource';
 import { formatNaira } from '../../src/utils/currency';
-import { colors, radius, spacing } from '../../src/theme';
-import { useFocusLoad } from '../../src/hooks/useFocusLoad';
+import { spacing } from '../../src/theme';
+
+type Filter = 'all' | 'owing';
 
 export default function CustomersScreen() {
-  const [customers, setCustomers] = useState<Customer[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [showForm, setShowForm] = useState(false);
+  const [query, setQuery] = useState('');
+  const [filter, setFilter] = useState<Filter>('all');
+  const { data, error, loading, refreshing, reload, retry } = useResource(listCustomers, ['customer.changed', 'sale.completed', 'payment.received'], [], { key: 'customers' });
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      setCustomers(await listCustomers());
-    } catch (err) {
-      Alert.alert('Could not load customers', apiErrorMessage(err));
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const owing = useMemo(() => (data ?? []).filter((c) => c.outstandingBalance > 0), [data]);
+  const totalOwed = useMemo(() => owing.reduce((sum, c) => sum + c.outstandingBalance, 0), [owing]);
 
-  useFocusLoad(load);
+  const visible = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    const qDigits = q.replace(/\s/g, '');
+    const base = filter === 'owing' ? [...owing].sort((a, b) => b.outstandingBalance - a.outstandingBalance) : data ?? [];
+    return base.filter((c) => !q || c.name.toLowerCase().includes(q) || (!!qDigits && (c.phone ?? '').replace(/\s/g, '').includes(qDigits)));
+  }, [data, owing, query, filter]);
 
-  return (
-    <ScreenContainer refreshing={loading} onRefresh={load}>
-      <View style={styles.headerRow}>
-        <Text style={styles.title}>Customers</Text>
-        <Button label={showForm ? 'Cancel' : 'Add customer'} variant="secondary" onPress={() => setShowForm((v) => !v)} />
-      </View>
-
-      {showForm && (
-        <NewCustomerForm
-          onCreated={() => {
-            setShowForm(false);
-            load();
-          }}
-        />
-      )}
-
-      {customers.length === 0 && !loading ? (
-        <Text style={styles.empty}>No customers yet.</Text>
-      ) : (
-        customers.map((c) => (
-          <Pressable key={c.id} style={styles.card} onPress={() => router.push(`/customer/${c.id}`)}>
-            <View>
-              <Text style={styles.name}>{c.name}</Text>
-              {c.phone ? <Text style={styles.phone}>{c.phone}</Text> : null}
-            </View>
-            <Text style={c.outstandingBalance > 0 ? styles.balanceOwed : styles.balanceClear}>
-              {c.outstandingBalance > 0 ? formatNaira(c.outstandingBalance) : 'No debt'}
-            </Text>
-          </Pressable>
-        ))
-      )}
-    </ScreenContainer>
+  const addCustomer = () => router.push('/customer/form');
+  const header = (
+    <PageHeader
+      title="Customers"
+      subtitle={
+        data && data.length > 0
+          ? `${data.length} customer${data.length === 1 ? '' : 's'}${totalOwed > 0 ? ` · ${formatNaira(totalOwed)} owed to you` : ''}`
+          : 'People who buy from you'
+      }
+      actions={<Button label="Add" icon="person-add-outline" size="sm" onPress={addCustomer} accessibilityLabel="Add customer" />}
+    />
   );
-}
 
-function NewCustomerForm({ onCreated }: { onCreated: () => void }) {
-  const [name, setName] = useState('');
-  const [phone, setPhone] = useState('');
-  const [submitting, setSubmitting] = useState(false);
-
-  async function handleSubmit() {
-    setSubmitting(true);
-    try {
-      await createCustomer({ name: name.trim(), phone: phone.trim() || undefined });
-      onCreated();
-    } catch (err) {
-      Alert.alert('Could not add customer', apiErrorMessage(err));
-    } finally {
-      setSubmitting(false);
-    }
+  if (loading) {
+    return (
+      <Screen>
+        {header}
+        <SkeletonList rows={6} />
+      </Screen>
+    );
+  }
+  if (!data) {
+    return (
+      <Screen>
+        {header}
+        <ErrorState message={error ?? 'Your customers could not be loaded.'} onRetry={retry} />
+      </Screen>
+    );
   }
 
   return (
-    <View style={styles.form}>
-      <TextField label="Name" value={name} onChangeText={setName} placeholder="Chinedu Okafor" />
-      <TextField label="Phone (optional)" value={phone} onChangeText={setPhone} keyboardType="phone-pad" placeholder="080..." />
-      <Button label="Save customer" onPress={handleSubmit} loading={submitting} disabled={!name.trim()} />
-    </View>
+    <Screen refreshing={refreshing} onRefresh={reload}>
+      {header}
+      {error ? <InlineError message={error} onRetry={reload} /> : null}
+      {data.length === 0 ? (
+        <EmptyState
+          icon="people-outline"
+          title="No customers yet"
+          message="Add the people who buy from you to sell on credit and keep track of what they owe."
+          actionLabel="Add customer"
+          onAction={addCustomer}
+        />
+      ) : (
+        <>
+          <SearchBar value={query} onChangeText={setQuery} placeholder="Search by name or phone" />
+          <ChipGroup
+            value={filter}
+            onChange={setFilter}
+            options={[
+              { value: 'all', label: `All (${data.length})` },
+              { value: 'owing', label: `Owing (${owing.length})` },
+            ]}
+          />
+          {visible.length === 0 ? (
+            <AppText tone="muted" align="center" style={styles.noMatch}>
+              {query ? `No customers match “${query}”.` : 'Nobody owes you money right now.'}
+            </AppText>
+          ) : (
+            <Card style={styles.list}>
+              {visible.map((c, i) => (
+                <ListRow
+                  key={c.id}
+                  title={c.name}
+                  subtitle={c.phone || 'No phone number'}
+                  leading={<Avatar name={c.name} />}
+                  trailing={c.outstandingBalance > 0 ? <Badge label={`Owes ${formatNaira(c.outstandingBalance)}`} tone="danger" /> : null}
+                  onPress={() => router.push({ pathname: '/customer/[id]', params: { id: c.id } })}
+                  last={i === visible.length - 1}
+                />
+              ))}
+            </Card>
+          )}
+        </>
+      )}
+    </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  headerRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  title: {
-    fontSize: 22,
-    fontWeight: '700',
-    color: colors.text,
-  },
-  form: {
-    backgroundColor: colors.surface,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: spacing.md,
-    gap: spacing.sm,
-  },
-  empty: {
-    color: colors.textMuted,
-    textAlign: 'center',
-    marginTop: spacing.lg,
-  },
-  card: {
-    backgroundColor: colors.surface,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: spacing.md,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  name: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: colors.text,
-  },
-  phone: {
-    color: colors.textMuted,
-    fontSize: 13,
-  },
-  balanceOwed: {
-    color: colors.danger,
-    fontWeight: '700',
-  },
-  balanceClear: {
-    color: colors.textMuted,
-  },
+  list: { paddingVertical: spacing.xs, gap: 0 },
+  noMatch: { paddingVertical: spacing.lg },
 });

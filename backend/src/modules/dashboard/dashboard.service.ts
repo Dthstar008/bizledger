@@ -18,22 +18,23 @@ export class DashboardService {
     private readonly customersService: CustomersService,
   ) {}
 
-  async getSummary(businessId: string, from?: Date, to?: Date) {
+  async getSummary(businessId: string, from?: Date, to?: Date, branchId?: string) {
     const now = to ?? new Date();
     const periodStart = from ?? new Date(now.getFullYear(), now.getMonth(), 1);
     const periodLengthMs = now.getTime() - periodStart.getTime();
     const previousPeriodEnd = new Date(periodStart.getTime() - 1);
     const previousPeriodStart = new Date(previousPeriodEnd.getTime() - periodLengthMs);
 
-    const [current, previous, expenses, previousExpenses, inventoryValue, lowStock, outstandingDebt] =
+    const [current, previous, expenses, previousExpenses, inventoryValue, lowStock, outstandingDebt, customerCount] =
       await Promise.all([
-        this.salesService.summarizeForPeriod(businessId, periodStart, now),
-        this.salesService.summarizeForPeriod(businessId, previousPeriodStart, previousPeriodEnd),
-        this.expensesService.totalForPeriod(businessId, periodStart, now),
-        this.expensesService.totalForPeriod(businessId, previousPeriodStart, previousPeriodEnd),
+        this.salesService.summarizeForPeriod(businessId, periodStart, now, branchId),
+        this.salesService.summarizeForPeriod(businessId, previousPeriodStart, previousPeriodEnd, branchId),
+        this.expensesService.totalForPeriod(businessId, periodStart, now, branchId),
+        this.expensesService.totalForPeriod(businessId, previousPeriodStart, previousPeriodEnd, branchId),
         this.productsService.totalStockValue(businessId),
         this.productsService.lowStock(businessId),
         this.customersService.totalOutstandingDebt(businessId),
+        this.customersService.count(businessId),
       ]);
 
     const netProfit = current.grossProfit - expenses;
@@ -66,6 +67,7 @@ export class DashboardService {
       inventoryValue,
       outstandingCustomerDebt: outstandingDebt,
       saleCount: current.saleCount,
+      customerCount,
       lowStockProducts: lowStock,
       insights,
     };

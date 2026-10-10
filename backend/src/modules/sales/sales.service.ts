@@ -16,6 +16,8 @@ import {
 import { CreateSaleDto } from './dto/create-sale.dto';
 import { LedgerService } from '../ledger/ledger.service';
 import { withConnectionRetry } from '../../common/retry';
+import { isUniqueViolation, resolveOccurredAt } from '../../common/offline';
+import { Actor, actorMeta } from '../../common/current-business.decorator';
 
 /**
  * Derives payment_status from how much of the sale's total is still
@@ -65,11 +67,37 @@ export class SalesService {
    * each round trip holds a connection out of the pool for its full
    * network latency, and that's the resource that runs out first at scale.
    */
-  async create(businessId: string, dto: CreateSaleDto): Promise<Sale> {
-    return withConnectionRetry(() => this.createInner(businessId, dto));
+  async create(businessId: string, dto: CreateSaleDto, branchId?: string, actor?: Actor): Promise<Sale> {
+    // A sale synced from the phone may arrive more than once (a retry after
+    // a dropped connection). The first one stored wins: later copies get it
+    // back without touching stock or the ledger again.
+    if (dto.clientRef) {
+      const existing = await this.findByClientRef(businessId, dto.clientRef);
+      if (existing) return existing;
+    }
+    try {
+      return await withConnectionRetry(() => this.createInner(businessId, dto, branchId, actor));
+    } catch (err) {
+      // Two copies raced past the check above; the unique index let only one
+      // commit and rolled the other back entirely.
+      if (dto.clientRef && isUniqueViolation(err)) {
+        const existing = await this.findByClientRef(businessId, dto.clientRef);
+        if (existing) return existing;
+      }
+      throw err;
+    }
   }
 
-  private async createInner(businessId: string, dto: CreateSaleDto): Promise<Sale> {
+  private findByClientRef(businessId: string, clientRef: string): Promise<Sale | null> {
+    return this.sales.findOne({ where: { businessId, clientRef }, relations: ['items', 'customer'] });
+  }
+
+  private async createInner(businessId: string, dto: CreateSaleDto, branchId?: string, actor?: Actor): Promise<Sale> {
+    // Offline sales keep the time they were made (within limits), so they land
+    // on the right day in reports; the ledger notes that they arrived later.
+    const offline = dto.occurredAt ? { recordedOffline: true } : {};
+    const who = { ...actorMeta(actor), ...offline };
+    const occurredAt = resolveOccurredAt(dto.occurredAt);
     return this.dataSource.transaction(async (manager) => {
       const productRepo = manager.getRepository(Product);
       const saleRepo = manager.getRepository(Sale);
@@ -156,11 +184,11 @@ export class SalesService {
       // Transfer/POS are merchant-entered until a real payment-provider
       // integration exists to verify them — a reference number is not proof.
       const verified = dto.paymentMethod === PaymentMethod.CASH;
-      const now = new Date();
 
       const sale = await saleRepo.save(
         saleRepo.create({
           businessId,
+          branchId: branchId ?? null,
           customerId: dto.customerId,
           paymentMethod: dto.paymentMethod,
           status: SaleStatus.CONFIRMED,
@@ -172,7 +200,9 @@ export class SalesService {
           costTotal,
           paymentReference: dto.paymentReference,
           verified,
-          confirmedAt: now,
+          confirmedAt: occurredAt,
+          createdAt: occurredAt,
+          clientRef: dto.clientRef ?? null,
         }),
       );
 
@@ -194,7 +224,14 @@ export class SalesService {
         ledgerEvents.push({
           businessId,
           type: LedgerEventType.INVENTORY_DECREASED,
-          metadata: { productId, name: product.name, quantity: qty, remainingStock: remainingStockByProductId.get(productId) },
+          metadata: {
+            productId,
+            name: product.name,
+            quantity: qty,
+            remainingStock: remainingStockByProductId.get(productId),
+            saleId: sale.id,
+            ...who,
+          },
         });
       }
 
@@ -202,7 +239,14 @@ export class SalesService {
         businessId,
         type: LedgerEventType.SALE_CREATED,
         amount: totalAmount,
-        metadata: { saleId: sale.id, itemCount: itemRows.length, paymentStatus: sale.paymentStatus, verified },
+        metadata: {
+          saleId: sale.id,
+          itemCount: itemRows.length,
+          paymentStatus: sale.paymentStatus,
+          verified,
+          customerId: dto.customerId ?? null,
+          ...who,
+        },
       });
 
       if (amountPaid > 0) {
@@ -210,7 +254,7 @@ export class SalesService {
           businessId,
           type: LedgerEventType.PAYMENT_RECEIVED,
           amount: amountPaid,
-          metadata: { saleId: sale.id, method: dto.paymentMethod },
+          metadata: { saleId: sale.id, method: dto.paymentMethod, customerId: dto.customerId ?? null, ...who },
         });
       }
 
@@ -219,7 +263,7 @@ export class SalesService {
           businessId,
           type: LedgerEventType.CUSTOMER_CREDIT_CREATED,
           amount: creditAmount,
-          metadata: { saleId: sale.id, customerId: dto.customerId },
+          metadata: { saleId: sale.id, customerId: dto.customerId, ...who },
         });
       }
 
@@ -248,9 +292,9 @@ export class SalesService {
     });
   }
 
-  findAll(businessId: string): Promise<Sale[]> {
+  findAll(businessId: string, branchId?: string): Promise<Sale[]> {
     return this.sales.find({
-      where: { businessId },
+      where: branchId ? { businessId, branchId } : { businessId },
       relations: ['items', 'customer'],
       order: { createdAt: 'DESC' },
     });
@@ -281,8 +325,8 @@ export class SalesService {
     return manager.getRepository(Sale).save(sale);
   }
 
-  async summarizeForPeriod(businessId: string, from: Date, to: Date) {
-    const result = await this.sales
+  async summarizeForPeriod(businessId: string, from: Date, to: Date, branchId?: string) {
+    const query = this.sales
       .createQueryBuilder('sale')
       .select('COALESCE(SUM(sale.totalAmount), 0)', 'revenue')
       .addSelect('COALESCE(SUM(sale.totalAmount - sale.costTotal), 0)', 'grossProfit')
@@ -291,8 +335,9 @@ export class SalesService {
       .addSelect('COUNT(sale.id)', 'saleCount')
       .where('sale.businessId = :businessId', { businessId })
       .andWhere('sale.createdAt >= :from', { from })
-      .andWhere('sale.createdAt <= :to', { to })
-      .getRawOne<{
+      .andWhere('sale.createdAt <= :to', { to });
+    if (branchId) query.andWhere('sale.branchId = :branchId', { branchId });
+    const result = await query.getRawOne<{
         revenue: string;
         grossProfit: string;
         cashCollected: string;

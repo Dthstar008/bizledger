@@ -1,4 +1,6 @@
-import { Module } from '@nestjs/common';
+import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
+import { APP_GUARD } from '@nestjs/core';
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import configuration from './config/configuration';
@@ -12,6 +14,8 @@ import {
   Expense,
   Transaction,
   LedgerEvent,
+  Branch,
+  PasswordReset,
 } from './entities';
 import { AuthModule } from './modules/auth/auth.module';
 import { BusinessesModule } from './modules/businesses/businesses.module';
@@ -21,7 +25,13 @@ import { SalesModule } from './modules/sales/sales.module';
 import { ExpensesModule } from './modules/expenses/expenses.module';
 import { LedgerModule } from './modules/ledger/ledger.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
+import { BranchesModule } from './modules/branches/branches.module';
+import { EmployeesModule } from './modules/employees/employees.module';
+import { AnalyticsModule } from './modules/analytics/analytics.module';
 import { AppController } from './app.controller';
+import { LegalController } from './modules/legal/legal.controller';
+import { AppConfigController } from './modules/app-config/app-config.controller';
+import { AppVersionMiddleware } from './modules/app-config/app-version.middleware';
 
 @Module({
   imports: [
@@ -36,7 +46,7 @@ import { AppController } from './app.controller';
         username: config.get<string>('database.username'),
         password: config.get<string>('database.password'),
         database: config.get<string>('database.name'),
-        entities: [Business, User, Product, Customer, Sale, SaleItem, Expense, Transaction, LedgerEvent],
+        entities: [Business, User, Product, Customer, Sale, SaleItem, Expense, Transaction, LedgerEvent, Branch, PasswordReset],
         ssl: config.get<boolean>('database.ssl') ? { rejectUnauthorized: false } : false,
         // Schema is managed through versioned migrations now (see
         // src/database/migrations/), not auto-sync — a boot-time schema
@@ -79,6 +89,16 @@ import { AppController } from './app.controller';
         },
       }),
     }),
+    // Per-IP request limits. In-memory per instance, which is fine while the API
+    // runs as one instance; move the storage to Redis when it scales out.
+    ThrottlerModule.forRootAsync({
+      imports: [ConfigModule],
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => ({
+        throttlers: [{ name: 'default', ttl: 60_000, limit: config.get<number>('rateLimit.perMinute') ?? 600 }],
+        errorMessage: 'Too many requests. Please wait a moment and try again.',
+      }),
+    }),
     AuthModule,
     BusinessesModule,
     ProductsModule,
@@ -87,7 +107,15 @@ import { AppController } from './app.controller';
     ExpensesModule,
     LedgerModule,
     DashboardModule,
+    BranchesModule,
+    EmployeesModule,
+    AnalyticsModule,
   ],
-  controllers: [AppController],
+  controllers: [AppController, LegalController, AppConfigController],
+  providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })
-export class AppModule {}
+export class AppModule implements NestModule {
+  configure(consumer: MiddlewareConsumer) {
+    consumer.apply(AppVersionMiddleware).forRoutes('*');
+  }
+}
